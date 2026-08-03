@@ -1,0 +1,27 @@
+title: OPNsense: System Status, Uptime and Load
+agents: opnsense
+catalog: os/misc
+license: GPLv2
+distribution: check_mk
+
+description:
+ This check monitors the overall system status of an OPNsense firewall. It
+ reports pending subsystem notifications, the system uptime and the 1/5/15
+ minute load averages. The data is collected via the special agent
+ {agent_opnsense} from the {/api/core/system/status} and
+ {/api/diagnostics/system/systemTime} REST API endpoints.
+
+ The service turns {WARN} or {CRIT} when OPNsense reports a subsystem
+ notification with a corresponding severity (for example a pending
+ configuration change or a security notice). Uptime and load are reported for
+ informational purposes and as metrics; they do not by themselves change the
+ service state.
+
+ There are no configurable parameters for this check.
+
+item:
+ This check has no item; exactly one service is created per host.
+
+discovery:
+ One service {OPNsense System} is created for each OPNsense host that returns
+ system data.

@@ -1,0 +1,23 @@
+title: OPNsense: Filesystem Usage
+agents: opnsense
+catalog: os/storage
+license: GPLv2
+distribution: check_mk
+
+description:
+ This check monitors the usage of a single mounted filesystem on an OPNsense
+ firewall. The data is collected via the special agent {agent_opnsense} from
+ the {/api/diagnostics/system/systemDisk} REST API endpoint, creating one
+ Checkmk service per mountpoint.
+
+ The service turns {WARN} or {CRIT} when the used space in percent exceeds the
+ configured levels. The default levels are 80% ({WARN}) and 90% ({CRIT}) and
+ can be adjusted through the rule "OPNsense filesystem usage". The device name
+ and filesystem type are shown in the service details.
+
+item:
+ The mountpoint of the filesystem, for example {/} or {/boot/efi}.
+
+discovery:
+ One service {OPNsense Filesystem MOUNTPOINT} is created for each mounted
+ filesystem returned by the OPNsense disk API.

@@ -1,0 +1,26 @@
+title: OPNsense: Firmware and Update Status
+agents: opnsense
+catalog: os/firmware
+license: GPLv2
+distribution: check_mk
+
+description:
+ This check monitors the firmware version and pending update status of an
+ OPNsense firewall. The data is collected via the special agent {agent_opnsense}
+ which polls the {/api/core/firmware/status} and {/api/core/firmware/info}
+ REST API endpoints.
+
+ The check reports the installed product and version and turns {WARN} when
+ package updates or a new package set are available. It turns {CRIT} when an
+ upgrade that requires a reboot is pending. A problem reported by the package
+ repository also raises the state to {WARN}. If the API cannot be queried the
+ service becomes {UNKNOWN}.
+
+ There are no configurable parameters for this check.
+
+item:
+ This check has no item; exactly one service is created per host.
+
+discovery:
+ One service {OPNsense Firmware} is created for each OPNsense host that
+ returns firmware data.

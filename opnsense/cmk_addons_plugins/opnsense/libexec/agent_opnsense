@@ -1,0 +1,110 @@
+#!/usr/bin/env python3
+"""Checkmk special agent for OPNsense (REST API).
+
+Polls an OPNsense firewall over its REST API using Basic auth (API key as
+username, API secret as password) and emits Checkmk agent sections:
+
+    <<<opnsense_firmware:sep(0)>>>   JSON from core/firmware/status
+    <<<opnsense_services:sep(0)>>>   JSON list from core/service/search
+    <<<opnsense_system:sep(0)>>>     JSON: system/status + diagnostics gauges
+
+All endpoints are read-only (GET, or POST with empty body). A read-only user
+with "Status: Services" + "Lobby: Dashboard" + "System: Firmware" + "System:
+Status" privileges is sufficient.
+"""
+import argparse
+import json
+import sys
+import ssl
+import base64
+from urllib.request import Request, urlopen
+from urllib.error import HTTPError, URLError
+
+
+def parse_args(argv):
+    p = argparse.ArgumentParser(description="Checkmk OPNsense special agent")
+    p.add_argument("--api-key", required=True, help="OPNsense API key")
+    p.add_argument("--api-secret", required=True, help="OPNsense API secret")
+    p.add_argument("--port", type=int, default=8443, help="HTTPS port (default 8443)")
+    p.add_argument("--no-cert-check", action="store_true",
+                   help="Disable TLS certificate verification (self-signed)")
+    p.add_argument("--timeout", type=int, default=20, help="Per-request timeout (s)")
+    p.add_argument("hostname", help="OPNsense host / address")
+    return p.parse_args(argv)
+
+
+def make_context(no_cert_check):
+    ctx = ssl.create_default_context()
+    if no_cert_check:
+        ctx.check_hostname = False
+        ctx.verify_mode = ssl.CERT_NONE
+    return ctx
+
+
+class OPNsenseClient:
+    def __init__(self, host, port, key, secret, ctx, timeout):
+        # Bracket bare IPv6 addresses for the URL authority component.
+        if ":" in host and not host.startswith("["):
+            host = "[%s]" % host
+        self.base = "https://%s:%d/api" % (host, port)
+        self.ctx = ctx
+        self.timeout = timeout
+        token = base64.b64encode(("%s:%s" % (key, secret)).encode()).decode()
+        self.auth = "Basic %s" % token
+
+    def call(self, path, method="GET"):
+        url = "%s/%s" % (self.base, path)
+        data = b"" if method == "POST" else None
+        req = Request(url, data=data, method=method)
+        req.add_header("Authorization", self.auth)
+        with urlopen(req, context=self.ctx, timeout=self.timeout) as resp:
+            return json.loads(resp.read().decode("utf-8"))
+
+
+def emit(section, payload):
+    sys.stdout.write("<<<%s:sep(0)>>>\n" % section)
+    sys.stdout.write(json.dumps(payload) + "\n")
+
+
+def main(argv=None):
+    args = parse_args(argv if argv is not None else sys.argv[1:])
+    ctx = make_context(args.no_cert_check)
+    client = OPNsenseClient(args.hostname, args.port, args.api_key,
+                            args.api_secret, ctx, args.timeout)
+
+    # --- Firmware / updates ---
+    firmware = {}
+    try:
+        firmware = client.call("core/firmware/status", method="POST")
+    except (HTTPError, URLError, ValueError) as exc:
+        firmware = {"_error": str(exc)}
+    emit("opnsense_firmware", firmware)
+
+    # --- Services (per-service discovery) ---
+    services = {}
+    try:
+        services = client.call("core/service/search")
+    except (HTTPError, URLError, ValueError) as exc:
+        services = {"_error": str(exc)}
+    emit("opnsense_services", services)
+
+    # --- System status + diagnostics gauges ---
+    system = {}
+    for key, path, method in (
+        ("status", "core/system/status", "GET"),
+        ("time", "diagnostics/system/system_time", "GET"),
+        ("resources", "diagnostics/system/system_resources", "GET"),
+        ("disk", "diagnostics/system/system_disk", "GET"),
+        ("swap", "diagnostics/system/system_swap", "GET"),
+        ("temperature", "diagnostics/system/system_temperature", "GET"),
+    ):
+        try:
+            system[key] = client.call(path, method=method)
+        except (HTTPError, URLError, ValueError) as exc:
+            system[key] = {"_error": str(exc)}
+    emit("opnsense_system", system)
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

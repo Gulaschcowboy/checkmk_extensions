@@ -1,0 +1,23 @@
+title: OPNsense: Memory and Swap Usage
+agents: opnsense
+catalog: os/misc
+license: GPLv2
+distribution: check_mk
+
+description:
+ This check monitors the RAM and swap usage of an OPNsense firewall. The data
+ is collected via the special agent {agent_opnsense} from the
+ {/api/diagnostics/system/systemResources} and
+ {/api/diagnostics/system/systemSwap} REST API endpoints.
+
+ The service turns {WARN} or {CRIT} when the used memory in percent exceeds the
+ configured levels. The default levels are 80% ({WARN}) and 90% ({CRIT}) and
+ can be adjusted through the rule "OPNsense memory usage". Swap usage is
+ reported for informational purposes and as a metric.
+
+item:
+ This check has no item; exactly one service is created per host.
+
+discovery:
+ One service {OPNsense Memory} is created for each OPNsense host that returns
+ memory resource data.

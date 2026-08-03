@@ -1,0 +1,28 @@
+title: OPNsense: Service Status
+agents: opnsense
+catalog: os/services
+license: GPLv2
+distribution: check_mk
+
+description:
+ This check monitors the running state of a single OPNsense service (daemon).
+ The data is collected via the special agent {agent_opnsense} which polls the
+ {/api/core/service/search} REST API endpoint and creates one Checkmk service
+ per OPNsense service.
+
+ By default a service that is not running is reported as {CRIT}. If a service
+ that existed at discovery time has vanished from the API output the state is
+ {UNKNOWN}. Both states are configurable through the rule
+ "OPNsense service status".
+
+ System services that OPNsense reports as locked are annotated as such in the
+ service details.
+
+item:
+ The unique OPNsense service identifier (the API {id}, falling back to the
+ service {name}), for example {unbound}, {openssh} or
+ {openvpn/faebb775-350f-4200-b6f5-50698751b891}.
+
+discovery:
+ One service {OPNsense Service ID} is created for each service returned by the
+ OPNsense service API.

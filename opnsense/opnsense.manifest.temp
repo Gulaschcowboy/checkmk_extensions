@@ -1,0 +1,28 @@
+{'author': 'Hermes Agent',
+ 'description': 'Special agent for OPNsense firewalls via the REST API. '
+                'Monitors firmware/update status, all services (one service '
+                'per OPNsense service, auto-discovered), system status, '
+                'uptime, load, memory, swap and filesystem usage. '
+                'Configurable HTTPS port (default 8443) and optional TLS '
+                'certificate check bypass for self-signed certificates.',
+ 'download_url': 'https://github.com/adminguru/checkmk-opnsense',
+ 'files': {'cmk_addons_plugins': ['opnsense/libexec/agent_opnsense',
+                                  'opnsense/agent_based/opnsense_firmware.py',
+                                  'opnsense/agent_based/opnsense_services.py',
+                                  'opnsense/agent_based/opnsense_system.py',
+                                  'opnsense/agent_based/opnsense_disk.py',
+                                  'opnsense/rulesets/opnsense.py',
+                                  'opnsense/rulesets/opnsense_params.py',
+                                  'opnsense/server_side_calls/opnsense.py',
+                                  'opnsense/graphing/opnsense.py',
+                                  'opnsense/checkman/opnsense_firmware',
+                                  'opnsense/checkman/opnsense_services',
+                                  'opnsense/checkman/opnsense_system',
+                                  'opnsense/checkman/opnsense_memory',
+                                  'opnsense/checkman/opnsense_disk']},
+ 'name': 'opnsense',
+ 'title': 'OPNsense firewall (REST API)',
+ 'version': '1.0.2',
+ 'version.min_required': '2.3.0b1',
+ 'version.packaged': 'hermes',
+ 'version.usable_until': None}
