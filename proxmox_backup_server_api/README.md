@@ -19,6 +19,7 @@ One host runs the special agent against the PBS API; services are auto-discovere
 | `PBS Datastore <name>` | Per-datastore usage + PBS estimated-full projection (one per datastore) |
 | `PBS GC <datastore>` | Garbage collection: schedule, last result, reclaimed space, bad chunks (one per datastore) |
 | `PBS Job <type> <id>` | Configured prune / verify / sync / tape jobs, each with its last run result (one per job) |
+| `PBS Backup Age <datastore>[, Namespace: <ns>]` | Freshness of backups: age of the newest snapshot per backup group (VM/CT/host), one service per datastore and per datastore+namespace |
 
 ## Requirements
 
@@ -40,8 +41,8 @@ Authorization: PBSAPIToken=<token-id>:<token-secret>
 ## Installation
 
 ```sh
-mkp add proxmox_backup_server_api-1.0.0.mkp
-mkp enable proxmox_backup_server_api 1.0.0
+mkp add proxmox_backup_server_api-1.1.0.mkp
+mkp enable proxmox_backup_server_api 1.1.0
 ```
 
 Then in Checkmk:
@@ -62,25 +63,43 @@ Then in Checkmk:
 - **Disable TLS certificate verification** — for self-signed certs (default on)
 - **Request timeout**
 
+### Backup Age (Freshness) check parameters
+
+The `PBS Backup Age` service has its own two rulesets:
+
+- **PBS backup age discovery** — which datastores are discovered (all / regex /
+  explicit list) and whether per-namespace services are created.
+- **PBS backup age** (check parameters):
+  - **Warning / Critical age** — thresholds for the newest snapshot per group
+    (default 2 / 10 days). Groups that trip a threshold are named with their age
+    in the summary, e.g. `2 backups older than 10 days: vm/307 (291d), vm/100 (15d)`.
+  - **Do not raise alerts** — report-only mode (state stays OK).
+  - **Ignore backups older than** — backups older than this are treated as
+    abandoned and no longer alert. They remain visible in the service details
+    flagged with `(ignored by rule)`, but do not affect the state or summary.
+  - **Ignore these groups** — exclude individual groups entirely (neither counted
+    nor shown). Accepts exact keys (`vm/9000`) or shell-style wildcards (`vm/*`,
+    `*/9000`), one per line.
+
 ## Building from source
 
 From this directory:
 
 ```sh
 python3 ../../tools/build_mkp.py
-python3 ../../tools/verify_mkp.py . proxmox_backup_server_api-1.0.0.mkp agent_proxmox_backup_server_api
+python3 ../../tools/verify_mkp.py . proxmox_backup_server_api-1.1.0.mkp agent_proxmox_backup_server_api
 ```
 
 ## Layout
 
 ```
 cmk_addons_plugins/proxmox_backup_server_api/
-  agent_based/        proxmox_backup_server_api_{node,datastore,gc,jobs}.py
+  agent_based/        proxmox_backup_server_api_{node,datastore,gc,jobs,snapshots}.py
   checkman/           manpages for each check
   graphing/           PBS-specific metrics/graphs (GC & jobs)
   libexec/            agent_proxmox_backup_server_api  (the special agent)
   rulesets/           special-agent + check-parameter rulesets
   server_side_calls/  builds the agent command line
 proxmox_backup_server_api.manifest.temp
-proxmox_backup_server_api-1.0.0.mkp
+proxmox_backup_server_api-1.1.0.mkp
 ```

@@ -262,6 +262,67 @@ def main(argv=None):
     jobs["tape"] = {"_error": tp_err} if tp_err else tape_jobs
 
     emit("proxmox_backup_server_api_jobs", jobs)
+
+    # ----- Snapshots: freshest backup per group, per datastore/namespace -
+    # The /snapshots endpoint only returns the queried namespace (the root
+    # namespace when ns is omitted), so we enumerate namespaces first and
+    # query each one. To keep the section small we aggregate to the newest
+    # backup-time per backup group (type/id) instead of shipping every
+    # snapshot (a single namespace can hold hundreds).
+    snapshots_out = {}
+    store_names = []
+    if isinstance(stores, list):
+        store_names = [s.get("store") for s in stores if s.get("store")]
+    for store in store_names:
+        ns_list, ns_err = client.try_get(
+            "admin/datastore/%s/namespace" % quote(store))
+        if ns_err:
+            snapshots_out[store] = {"_error": ns_err}
+            continue
+        namespaces = [""]  # always include the root namespace
+        if isinstance(ns_list, list):
+            for n in ns_list:
+                ns = n.get("ns") if isinstance(n, dict) else None
+                if ns:  # skip "" (root already present) and None
+                    namespaces.append(ns)
+        store_entry = {}
+        for ns in namespaces:
+            path = "admin/datastore/%s/snapshots" % quote(store)
+            if ns:
+                path += "?ns=%s" % quote(ns)
+            snaps, s_err = client.try_get(path)
+            ns_key = ns if ns else "root"
+            if s_err:
+                store_entry[ns_key] = {"_error": s_err}
+                continue
+            groups = {}
+            if isinstance(snaps, list):
+                for snap in snaps:
+                    if not isinstance(snap, dict):
+                        continue
+                    bt = snap.get("backup-type")
+                    bid = snap.get("backup-id")
+                    when = snap.get("backup-time")
+                    if bt is None or bid is None or when is None:
+                        continue
+                    try:
+                        when = int(when)
+                    except (ValueError, TypeError):
+                        continue
+                    gkey = "%s/%s" % (bt, bid)
+                    verify = snap.get("verification")
+                    vstate = verify.get("state") if isinstance(verify, dict) else None
+                    g = groups.get(gkey)
+                    if g is None:
+                        groups[gkey] = {"latest": when, "verify": vstate, "count": 1}
+                    else:
+                        g["count"] += 1
+                        if when > g["latest"]:
+                            g["latest"] = when
+                            g["verify"] = vstate
+            store_entry[ns_key] = groups
+        snapshots_out[store] = store_entry
+    emit("proxmox_backup_server_api_snapshots", snapshots_out)
     return 0
 
 

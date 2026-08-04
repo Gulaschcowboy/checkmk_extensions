@@ -1,0 +1,35 @@
+title: Proxmox Backup Server: Backup Age (Freshness)
+agents: proxmox_backup_server_api
+catalog: os/storage
+license: GPLv2
+distribution: check_mk
+
+description:
+ This check monitors the freshness of Proxmox Backup Server backups: for every
+ backup group (VM, container or host) it reports how long ago the most recent
+ snapshot was taken. Data is collected via the special agent
+ {agent_proxmox_backup_server_api}, which enumerates namespaces via
+ {/admin/datastore/<store>/namespace} and reads snapshots per namespace from
+ {/admin/datastore/<store>/snapshots}. To keep the agent output small the newest
+ {backup-time} per group is aggregated already in the agent.
+
+ The service goes {WARN}/{CRIT} when the newest backup of a group is older than
+ the configured age (default 2 / 10 days). Groups that trip a threshold are named
+ with their age in the summary (for example {vm/9000 (291d)}). Raising of states
+ can be disabled (report only), and backups older than a configurable threshold
+ can be excluded from alerting (treated as abandoned); such suppressed groups are
+ still listed in the service details, flagged with {(ignored by rule)}, but do not
+ affect the state or the summary. Individual backup groups can be excluded
+ entirely via the "Ignore these groups" option, which accepts exact keys
+ ({vm/9000}) or shell-style wildcards ({vm/*}, {*/9000}). The oldest backup age
+ in the item is exported as the {backup_age} metric.
+
+item:
+ Either a datastore (for example {backup1}), aggregating the freshest backup of
+ every namespace, or a datastore and namespace
+ (for example {backup1, Namespace: pve1}).
+
+discovery:
+ One service is created per datastore and one per datastore+namespace. Which
+ datastores are discovered (all / regex / explicit list) is controlled by the
+ "PBS backup age discovery" ruleset.
