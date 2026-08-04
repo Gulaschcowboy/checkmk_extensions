@@ -1,81 +1,84 @@
 # Proxmox Backup Server (REST API)
 
-Checkmk special agent + check plugins for monitoring a
+Checkmk special agent + check plugins that monitor a
 [Proxmox Backup Server](https://www.proxmox.com/en/proxmox-backup-server) (PBS)
-through its REST API (port 8007) using an API token.
-
-Package name: `pbs` · Version: `1.0.0` · Requires Checkmk `2.3.0b1`+
-(2.3 / 2.4 addon layout, `cmk_addons`).
+through its REST API (default port 8007, API-token authentication).
 
 ## What it monitors
 
-| Service                          | Check                                                                                      |
-|----------------------------------|--------------------------------------------------------------------------------------------|
-| `PBS Node`                       | CPU utilization, load average (1/5/15), uptime                                             |
-| `PBS Node Memory`                | RAM and swap usage                                                                          |
-| `PBS Node Root FS`               | Root filesystem usage                                                                       |
-| `PBS Subscription`               | Subscription status (`active` / `notfound` / …)                                             |
-| `PBS Datastore <name>`           | Per-datastore disk usage + PBS estimated-full-date projection (one service per datastore)  |
-| `PBS GC <datastore>`             | Garbage collection: schedule, next run, last result, reclaimed space/chunks, bad chunks    |
-| `PBS Job <id>`                   | Configured prune / verify / sync / tape jobs — last run result correlated from task history (one service per job) |
+One host runs the special agent against the PBS API; services are auto-discovered:
 
-Datastores, GC checks and jobs are auto-discovered (one service each).
+| Service | Description |
+|---|---|
+| `PBS Node` | CPU utilization, load average, uptime |
+| `PBS Node Memory` | RAM and swap usage |
+| `PBS Node Root FS` | Root filesystem usage |
+| `PBS Subscription` | Subscription/support status |
+| `PBS Datastore <name>` | Per-datastore usage + PBS estimated-full projection (one per datastore) |
+| `PBS GC <datastore>` | Garbage collection: schedule, last result, reclaimed space, bad chunks (one per datastore) |
+| `PBS Job <type> <id>` | Configured prune / verify / sync / tape jobs, each with its last run result (one per job) |
 
-## Requirements on the PBS side
+## Requirements
 
-Create an API token (Datacenter → Access Control → API Tokens), e.g.
-`root@pam!checkmk`, and give it at least read access
-(`Datastore.Audit`, `Sys.Audit`, `Tape.Audit` if you use tape jobs).
+- Checkmk 2.3.0b1 or newer (uses the `cmk_addons_plugins` API v2 layout).
+- A PBS API token with read-only audit privileges — role `Audit` on path `/`
+  (privileges `Datastore.Audit` + `Sys.Audit`) is sufficient. Create it under
+  **Configuration > Access Control > API Token** in the PBS UI.
 
-The agent authenticates with the PBS-specific header
-`Authorization: PBSAPIToken=<token-id>:<secret>` (note: **not** the
-`PVEAPIToken` form used by Proxmox VE).
+## Authentication note
 
-## Installing
-
-On your Checkmk site:
+PBS uses a different HTTP auth header than Proxmox VE. The special agent sends:
 
 ```
-mkp add pbs-1.0.0.mkp
-mkp enable pbs 1.0.0
+Authorization: PBSAPIToken=<token-id>:<token-secret>
 ```
 
-Then in the GUI:
+(Using `PVEAPIToken` — the PVE form — fails with "authentication failed".)
 
-1. **Setup → Agents → Other integrations → Proxmox Backup Server (REST API)** —
-   create a rule for your PBS host. Enter the token ID (`user@realm!tokenname`)
-   and the token secret (store it in the password store), optionally adjust the
-   port (default 8007), node name (default `localhost`), timeout, task history
-   limit, and TLS certificate check (disable for self-signed certs).
-2. Add the PBS host (agent type: *API integrations / special agent*), then run a
-   service discovery.
+## Installation
 
-Check levels (datastore usage, estimated-full warning, node CPU/load/memory,
-root FS, GC age, job age/result) are configurable via the corresponding
-**Setup → Service monitoring rules** entries.
+```sh
+mkp add proxmox_backup_server_api-1.0.0.mkp
+mkp enable proxmox_backup_server_api 1.0.0
+```
+
+Then in Checkmk:
+
+1. Create a host for the PBS server.
+2. Add the rule **Setup > Agents > Other integrations > Proxmox Backup Server (REST API)**.
+3. Enter the API token ID and token secret (the secret may reference the
+   password store), adjust port / node name / TLS check as needed.
+4. Run service discovery and activate changes.
+
+## Configuration options (WATO ruleset)
+
+- **API token ID** — e.g. `root@pam!checkmk`
+- **API token secret** — supports the Checkmk password store
+- **HTTPS port** — default `8007`
+- **PBS node name** — default `localhost` (single-node installs)
+- **Task history scan depth** — how many recent tasks to correlate job/GC results from
+- **Disable TLS certificate verification** — for self-signed certs (default on)
+- **Request timeout**
 
 ## Building from source
 
-The plugin source lives under `cmk_addons_plugins/pbs/`. To rebuild the `.mkp`
-with the stdlib-only build tool from this workbench:
+From this directory:
 
-```
-python3 tools/build_mkp.py      # run from the project dir holding pbs.manifest.temp
-python3 tools/verify_mkp.py . pbs-1.0.0.mkp agent_pbs
+```sh
+python3 ../../tools/build_mkp.py
+python3 ../../tools/verify_mkp.py . proxmox_backup_server_api-1.0.0.mkp agent_proxmox_backup_server_api
 ```
 
 ## Layout
 
 ```
-proxmox_backup_server_api/
-├── cmk_addons_plugins/pbs/
-│   ├── libexec/agent_pbs              # special agent (stdlib only)
-│   ├── agent_based/                   # pbs_node, pbs_datastore, pbs_gc, pbs_jobs
-│   ├── rulesets/                      # pbs (agent), pbs_params (check levels)
-│   ├── server_side_calls/pbs.py       # builds the agent command line
-│   ├── graphing/pbs.py                # metrics/graphs
-│   └── checkman/                      # man pages
-├── pbs.manifest.temp
-├── pbs-1.0.0.mkp
-└── README.md
+cmk_addons_plugins/proxmox_backup_server_api/
+  agent_based/        proxmox_backup_server_api_{node,datastore,gc,jobs}.py
+  checkman/           manpages for each check
+  graphing/           PBS-specific metrics/graphs (GC & jobs)
+  libexec/            agent_proxmox_backup_server_api  (the special agent)
+  rulesets/           special-agent + check-parameter rulesets
+  server_side_calls/  builds the agent command line
+proxmox_backup_server_api.manifest.temp
+proxmox_backup_server_api-1.0.0.mkp
 ```

@@ -12,7 +12,7 @@ from cmk.agent_based.v2 import (
 )
 
 
-def parse_pbs_node(string_table):
+def parse_proxmox_backup_server_api_node(string_table):
     if not string_table:
         return {}
     try:
@@ -21,21 +21,21 @@ def parse_pbs_node(string_table):
         return {}
 
 
-agent_section_pbs_node = AgentSection(
-    name="pbs_node",
-    parse_function=parse_pbs_node,
+agent_section_proxmox_backup_server_api_node = AgentSection(
+    name="proxmox_backup_server_api_node",
+    parse_function=parse_proxmox_backup_server_api_node,
 )
 
 
 # --------------------------------------------------------------------------
 # Node: CPU + load + uptime
 # --------------------------------------------------------------------------
-def discover_pbs_node(section):
+def discover_proxmox_backup_server_api_node(section):
     if section and "_error" not in section:
         yield Service()
 
 
-def check_pbs_node(params, section):
+def check_proxmox_backup_server_api_node(params, section):
     if not section:
         return
     if "_error" in section:
@@ -80,20 +80,20 @@ def check_pbs_node(params, section):
         yield Result(state=State.OK, notice="Kernel: %s" % kver)
 
 
-check_plugin_pbs_node = CheckPlugin(
-    name="pbs_node",
+check_plugin_proxmox_backup_server_api_node = CheckPlugin(
+    name="proxmox_backup_server_api_node",
     service_name="PBS Node",
-    discovery_function=discover_pbs_node,
-    check_function=check_pbs_node,
+    discovery_function=discover_proxmox_backup_server_api_node,
+    check_function=check_proxmox_backup_server_api_node,
     check_default_parameters={"cpu_levels": (80.0, 90.0)},
-    check_ruleset_name="pbs_node",
+    check_ruleset_name="proxmox_backup_server_api_node",
 )
 
 
 # --------------------------------------------------------------------------
 # Node memory (+ swap)
 # --------------------------------------------------------------------------
-def discover_pbs_memory(section):
+def discover_proxmox_backup_server_api_memory(section):
     if section and isinstance(section.get("memory"), dict):
         yield Service()
 
@@ -106,7 +106,7 @@ def _levels_state(pct, warn, crit):
     return State.OK
 
 
-def check_pbs_memory(params, section):
+def check_proxmox_backup_server_api_memory(params, section):
     if not section or "_error" in section:
         yield Result(state=State.UNKNOWN, summary="No memory data")
         return
@@ -146,26 +146,26 @@ def check_pbs_memory(params, section):
             yield Metric("swap_used", s_used, boundaries=(0, s_total))
 
 
-check_plugin_pbs_memory = CheckPlugin(
-    name="pbs_memory",
-    sections=["pbs_node"],
+check_plugin_proxmox_backup_server_api_memory = CheckPlugin(
+    name="proxmox_backup_server_api_memory",
+    sections=["proxmox_backup_server_api_node"],
     service_name="PBS Node Memory",
-    discovery_function=discover_pbs_memory,
-    check_function=check_pbs_memory,
+    discovery_function=discover_proxmox_backup_server_api_memory,
+    check_function=check_proxmox_backup_server_api_memory,
     check_default_parameters={"levels": (80.0, 90.0)},
-    check_ruleset_name="pbs_memory",
+    check_ruleset_name="proxmox_backup_server_api_memory",
 )
 
 
 # --------------------------------------------------------------------------
 # Node root filesystem
 # --------------------------------------------------------------------------
-def discover_pbs_rootfs(section):
+def discover_proxmox_backup_server_api_rootfs(section):
     if section and isinstance(section.get("root"), dict):
         yield Service()
 
 
-def check_pbs_rootfs(params, section):
+def check_proxmox_backup_server_api_rootfs(params, section):
     if not section or "_error" in section:
         yield Result(state=State.UNKNOWN, summary="No root filesystem data")
         return
@@ -190,26 +190,26 @@ def check_pbs_rootfs(params, section):
     yield Metric("fs_used_percent", pct, levels=(warn, crit), boundaries=(0, 100))
 
 
-check_plugin_pbs_rootfs = CheckPlugin(
-    name="pbs_rootfs",
-    sections=["pbs_node"],
+check_plugin_proxmox_backup_server_api_rootfs = CheckPlugin(
+    name="proxmox_backup_server_api_rootfs",
+    sections=["proxmox_backup_server_api_node"],
     service_name="PBS Node Root FS",
-    discovery_function=discover_pbs_rootfs,
-    check_function=check_pbs_rootfs,
+    discovery_function=discover_proxmox_backup_server_api_rootfs,
+    check_function=check_proxmox_backup_server_api_rootfs,
     check_default_parameters={"levels": (80.0, 90.0)},
-    check_ruleset_name="pbs_rootfs",
+    check_ruleset_name="proxmox_backup_server_api_rootfs",
 )
 
 
 # --------------------------------------------------------------------------
 # Subscription
 # --------------------------------------------------------------------------
-def discover_pbs_subscription(section):
+def discover_proxmox_backup_server_api_subscription(section):
     if section and isinstance(section.get("subscription"), dict):
         yield Service()
 
 
-def check_pbs_subscription(params, section):
+def check_proxmox_backup_server_api_subscription(params, section):
     sub = section.get("subscription", {}) if section else {}
     if not isinstance(sub, dict) or "_error" in sub:
         yield Result(state=State.UNKNOWN, summary="No subscription data")
@@ -231,12 +231,12 @@ def check_pbs_subscription(params, section):
     yield Result(state=state, summary=summary)
 
 
-check_plugin_pbs_subscription = CheckPlugin(
-    name="pbs_subscription",
-    sections=["pbs_node"],
+check_plugin_proxmox_backup_server_api_subscription = CheckPlugin(
+    name="proxmox_backup_server_api_subscription",
+    sections=["proxmox_backup_server_api_node"],
     service_name="PBS Subscription",
-    discovery_function=discover_pbs_subscription,
-    check_function=check_pbs_subscription,
+    discovery_function=discover_proxmox_backup_server_api_subscription,
+    check_function=check_proxmox_backup_server_api_subscription,
     check_default_parameters={"state_notfound": 1},
-    check_ruleset_name="pbs_subscription",
+    check_ruleset_name="proxmox_backup_server_api_subscription",
 )

@@ -93,8 +93,8 @@ def _formspec():
     )
 
 
-rule_spec_pbs = SpecialAgent(
-    name="pbs",
+rule_spec_proxmox_backup_server_api = SpecialAgent(
+    name="proxmox_backup_server_api",
     title=Title("Proxmox Backup Server (REST API)"),
     topic=Topic.STORAGE,
     parameter_form=_formspec,

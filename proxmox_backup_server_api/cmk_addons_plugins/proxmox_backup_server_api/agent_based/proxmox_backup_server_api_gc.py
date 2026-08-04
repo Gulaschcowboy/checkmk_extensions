@@ -13,7 +13,7 @@ from cmk.agent_based.v2 import (
 )
 
 
-def parse_pbs_gc(string_table):
+def parse_proxmox_backup_server_api_gc(string_table):
     if not string_table:
         return {}
     try:
@@ -22,13 +22,13 @@ def parse_pbs_gc(string_table):
         return {}
 
 
-agent_section_pbs_gc = AgentSection(
-    name="pbs_gc",
-    parse_function=parse_pbs_gc,
+agent_section_proxmox_backup_server_api_gc = AgentSection(
+    name="proxmox_backup_server_api_gc",
+    parse_function=parse_proxmox_backup_server_api_gc,
 )
 
 
-def discover_pbs_gc(section):
+def discover_proxmox_backup_server_api_gc(section):
     if "_error" in section:
         return
     for store in section:
@@ -46,7 +46,7 @@ def _task_state(status):
     return State.CRIT, status
 
 
-def check_pbs_gc(item, params, section):
+def check_proxmox_backup_server_api_gc(item, params, section):
     if "_error" in section:
         yield Result(state=State.UNKNOWN, summary="API error: %s" % section["_error"])
         return
@@ -123,15 +123,15 @@ def check_pbs_gc(item, params, section):
         yield Result(state=State.OK, notice="Schedule: %s" % gc["schedule"])
 
 
-check_plugin_pbs_gc = CheckPlugin(
-    name="pbs_gc",
+check_plugin_proxmox_backup_server_api_gc = CheckPlugin(
+    name="proxmox_backup_server_api_gc",
     service_name="PBS GC %s",
-    discovery_function=discover_pbs_gc,
-    check_function=check_pbs_gc,
+    discovery_function=discover_proxmox_backup_server_api_gc,
+    check_function=check_proxmox_backup_server_api_gc,
     check_default_parameters={
         "state_failed": 2,
         "state_warn": 1,
         "state_never_run": 1,
     },
-    check_ruleset_name="pbs_gc",
+    check_ruleset_name="proxmox_backup_server_api_gc",
 )

@@ -5,12 +5,12 @@ Polls a Proxmox Backup Server over its REST API (default port 8007) using an
 API token (header ``Authorization: PBSAPIToken=<tokenid>:<secret>``) and emits
 Checkmk agent sections:
 
-    <<<pbs_node:sep(0)>>>       node status: cpu/load/memory/swap/uptime/root fs,
+    <<<proxmox_backup_server_api_node:sep(0)>>>       node status: cpu/load/memory/swap/uptime/root fs,
                                  kernel + subscription status
-    <<<pbs_datastore:sep(0)>>>  per datastore: total/used/avail, estimated full
-    <<<pbs_gc:sep(0)>>>         per datastore: garbage-collection schedule,
+    <<<proxmox_backup_server_api_datastore:sep(0)>>>  per datastore: total/used/avail, estimated full
+    <<<proxmox_backup_server_api_gc:sep(0)>>>         per datastore: garbage-collection schedule,
                                  next run, last result, removed/bad chunks
-    <<<pbs_jobs:sep(0)>>>       configured prune / verify / sync / tape jobs
+    <<<proxmox_backup_server_api_jobs:sep(0)>>>       configured prune / verify / sync / tape jobs
                                  with their last task result
 
 A read-only API token with Datastore.Audit (+ Sys.Audit for node status) is
@@ -120,7 +120,7 @@ def main(argv=None):
         node_out = node_data or {}
         sub, sub_err = client.try_get("nodes/%s/subscription" % quote(node))
         node_out["subscription"] = sub if not sub_err else {"_error": sub_err}
-    emit("pbs_node", node_out)
+    emit("proxmox_backup_server_api_node", node_out)
 
     # ----- Recent tasks (used to correlate job/gc results) --------------
     tasks, tasks_err = client.try_get(
@@ -161,7 +161,7 @@ def main(argv=None):
             u = usage_by_store.get(name, {})
             entry["estimated_full_date"] = u.get("estimated-full-date")
             datastores[name] = entry
-    emit("pbs_datastore", datastores)
+    emit("proxmox_backup_server_api_datastore", datastores)
 
     # ----- Garbage collection (per datastore) ---------------------------
     gc_list, gc_err = client.try_get("admin/gc")
@@ -188,7 +188,7 @@ def main(argv=None):
                 "disk_chunks": g.get("disk-chunks"),
                 "last": last,
             }
-    emit("pbs_gc", gc_out)
+    emit("proxmox_backup_server_api_gc", gc_out)
 
     # ----- Configured jobs: prune / verify / sync / tape ----------------
     jobs = {}
@@ -261,7 +261,7 @@ def main(argv=None):
             })
     jobs["tape"] = {"_error": tp_err} if tp_err else tape_jobs
 
-    emit("pbs_jobs", jobs)
+    emit("proxmox_backup_server_api_jobs", jobs)
     return 0
 
 

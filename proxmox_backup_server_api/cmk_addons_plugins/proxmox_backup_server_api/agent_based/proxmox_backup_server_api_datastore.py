@@ -13,7 +13,7 @@ from cmk.agent_based.v2 import (
 )
 
 
-def parse_pbs_datastore(string_table):
+def parse_proxmox_backup_server_api_datastore(string_table):
     if not string_table:
         return {}
     try:
@@ -22,20 +22,20 @@ def parse_pbs_datastore(string_table):
         return {}
 
 
-agent_section_pbs_datastore = AgentSection(
-    name="pbs_datastore",
-    parse_function=parse_pbs_datastore,
+agent_section_proxmox_backup_server_api_datastore = AgentSection(
+    name="proxmox_backup_server_api_datastore",
+    parse_function=parse_proxmox_backup_server_api_datastore,
 )
 
 
-def discover_pbs_datastore(section):
+def discover_proxmox_backup_server_api_datastore(section):
     if "_error" in section:
         return
     for name in section:
         yield Service(item=name)
 
 
-def check_pbs_datastore(item, params, section):
+def check_proxmox_backup_server_api_datastore(item, params, section):
     if "_error" in section:
         yield Result(state=State.UNKNOWN, summary="API error: %s" % section["_error"])
         return
@@ -109,11 +109,11 @@ def check_pbs_datastore(item, params, section):
         yield Result(state=State.OK, notice="Comment: %s" % ds["comment"])
 
 
-check_plugin_pbs_datastore = CheckPlugin(
-    name="pbs_datastore",
+check_plugin_proxmox_backup_server_api_datastore = CheckPlugin(
+    name="proxmox_backup_server_api_datastore",
     service_name="PBS Datastore %s",
-    discovery_function=discover_pbs_datastore,
-    check_function=check_pbs_datastore,
+    discovery_function=discover_proxmox_backup_server_api_datastore,
+    check_function=check_proxmox_backup_server_api_datastore,
     check_default_parameters={"levels": (80.0, 90.0), "full_horizon_days": (30, 7)},
-    check_ruleset_name="pbs_datastore",
+    check_ruleset_name="proxmox_backup_server_api_datastore",
 )

@@ -1,5 +1,5 @@
 title: Proxmox Backup Server: Backup Jobs (Prune/Verify/Sync/Tape)
-agents: pbs
+agents: proxmox_backup_server_api
 catalog: os/storage
 license: GPLv2
 distribution: check_mk
@@ -7,7 +7,7 @@ distribution: check_mk
 description:
  This check monitors configured Proxmox Backup Server jobs: prune jobs, verify
  jobs, sync jobs and tape backup jobs. Data is collected via the special agent
- {agent_pbs} from the {/config/prune}, {/config/verify}, {/config/sync} and
+ {agent_proxmox_backup_server_api} from the {/config/prune}, {/config/verify}, {/config/sync} and
  {/config/tape-backup-job} REST API endpoints; the last run result of each job
  is correlated from the node task history ({/nodes/<node>/tasks}).
 

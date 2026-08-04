@@ -60,8 +60,8 @@ def _node_form():
     )
 
 
-rule_spec_pbs_node = CheckParameters(
-    name="pbs_node",
+rule_spec_proxmox_backup_server_api_node = CheckParameters(
+    name="proxmox_backup_server_api_node",
     title=Title("PBS node CPU / load"),
     topic=Topic.STORAGE,
     parameter_form=_node_form,
@@ -74,8 +74,8 @@ def _memory_form():
     return Dictionary(elements={"levels": _pct_levels(Title("RAM usage levels"))})
 
 
-rule_spec_pbs_memory = CheckParameters(
-    name="pbs_memory",
+rule_spec_proxmox_backup_server_api_memory = CheckParameters(
+    name="proxmox_backup_server_api_memory",
     title=Title("PBS node memory usage"),
     topic=Topic.STORAGE,
     parameter_form=_memory_form,
@@ -88,8 +88,8 @@ def _rootfs_form():
     return Dictionary(elements={"levels": _pct_levels(Title("Root filesystem usage levels"))})
 
 
-rule_spec_pbs_rootfs = CheckParameters(
-    name="pbs_rootfs",
+rule_spec_proxmox_backup_server_api_rootfs = CheckParameters(
+    name="proxmox_backup_server_api_rootfs",
     title=Title("PBS node root filesystem usage"),
     topic=Topic.STORAGE,
     parameter_form=_rootfs_form,
@@ -112,8 +112,8 @@ def _subscription_form():
     )
 
 
-rule_spec_pbs_subscription = CheckParameters(
-    name="pbs_subscription",
+rule_spec_proxmox_backup_server_api_subscription = CheckParameters(
+    name="proxmox_backup_server_api_subscription",
     title=Title("PBS subscription status"),
     topic=Topic.STORAGE,
     parameter_form=_subscription_form,
@@ -139,8 +139,8 @@ def _datastore_form():
     )
 
 
-rule_spec_pbs_datastore = CheckParameters(
-    name="pbs_datastore",
+rule_spec_proxmox_backup_server_api_datastore = CheckParameters(
+    name="proxmox_backup_server_api_datastore",
     title=Title("PBS datastore usage"),
     topic=Topic.STORAGE,
     parameter_form=_datastore_form,
@@ -178,8 +178,8 @@ def _gc_form():
     )
 
 
-rule_spec_pbs_gc = CheckParameters(
-    name="pbs_gc",
+rule_spec_proxmox_backup_server_api_gc = CheckParameters(
+    name="proxmox_backup_server_api_gc",
     title=Title("PBS garbage collection"),
     topic=Topic.STORAGE,
     parameter_form=_gc_form,
@@ -224,8 +224,8 @@ def _jobs_form():
     )
 
 
-rule_spec_pbs_jobs = CheckParameters(
-    name="pbs_jobs",
+rule_spec_proxmox_backup_server_api_jobs = CheckParameters(
+    name="proxmox_backup_server_api_jobs",
     title=Title("PBS backup jobs (prune/verify/sync/tape)"),
     topic=Topic.STORAGE,
     parameter_form=_jobs_form,

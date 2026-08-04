@@ -1,12 +1,12 @@
 title: Proxmox Backup Server: Node CPU and Load
-agents: pbs
+agents: proxmox_backup_server_api
 catalog: os/storage
 license: GPLv2
 distribution: check_mk
 
 description:
  This check monitors the CPU utilization, load average and uptime of a Proxmox
- Backup Server node. Data is collected via the special agent {agent_pbs} which
+ Backup Server node. Data is collected via the special agent {agent_proxmox_backup_server_api} which
  polls the {/nodes/<node>/status} REST API endpoint.
 
  The service goes {WARN}/{CRIT} when the CPU utilization exceeds the configured

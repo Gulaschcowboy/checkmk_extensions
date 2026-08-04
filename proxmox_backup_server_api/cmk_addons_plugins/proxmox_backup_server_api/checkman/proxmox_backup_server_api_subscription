@@ -1,5 +1,5 @@
 title: Proxmox Backup Server: Subscription
-agents: pbs
+agents: proxmox_backup_server_api
 catalog: os/storage
 license: GPLv2
 distribution: check_mk

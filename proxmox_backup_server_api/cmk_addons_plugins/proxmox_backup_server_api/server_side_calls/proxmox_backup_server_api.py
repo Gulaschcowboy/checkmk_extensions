@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Server-side call: build the agent_pbs command line from the ruleset."""
+"""Server-side call: build the agent_proxmox_backup_server_api command line from the ruleset."""
 from collections.abc import Iterable
 from pydantic import BaseModel
 
@@ -37,8 +37,8 @@ def _commands(params: PBSParams, host_config: HostConfig
     yield SpecialAgentCommand(command_arguments=args)
 
 
-special_agent_pbs = SpecialAgentConfig(
-    name="pbs",
+special_agent_proxmox_backup_server_api = SpecialAgentConfig(
+    name="proxmox_backup_server_api",
     parameter_parser=PBSParams.model_validate,
     commands_function=_commands,
 )

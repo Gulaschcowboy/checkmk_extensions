@@ -28,7 +28,7 @@ _TYPE_LABELS = {
 }
 
 
-def parse_pbs_jobs(string_table):
+def parse_proxmox_backup_server_api_jobs(string_table):
     if not string_table:
         return {}
     try:
@@ -37,9 +37,9 @@ def parse_pbs_jobs(string_table):
         return {}
 
 
-agent_section_pbs_jobs = AgentSection(
-    name="pbs_jobs",
-    parse_function=parse_pbs_jobs,
+agent_section_proxmox_backup_server_api_jobs = AgentSection(
+    name="proxmox_backup_server_api_jobs",
+    parse_function=parse_proxmox_backup_server_api_jobs,
 )
 
 
@@ -55,7 +55,7 @@ def _iter_jobs(section):
             yield item, jtype, job
 
 
-def discover_pbs_jobs(section):
+def discover_proxmox_backup_server_api_jobs(section):
     if not section:
         return
     for item, _jtype, _job in _iter_jobs(section):
@@ -72,7 +72,7 @@ def _task_state(status):
     return State.CRIT, status
 
 
-def check_pbs_jobs(item, params, section):
+def check_proxmox_backup_server_api_jobs(item, params, section):
     if not section:
         return
     match = None
@@ -151,16 +151,16 @@ def check_pbs_jobs(item, params, section):
         yield Metric("last_age", age)
 
 
-check_plugin_pbs_jobs = CheckPlugin(
-    name="pbs_jobs",
+check_plugin_proxmox_backup_server_api_jobs = CheckPlugin(
+    name="proxmox_backup_server_api_jobs",
     service_name="PBS Job %s",
-    discovery_function=discover_pbs_jobs,
-    check_function=check_pbs_jobs,
+    discovery_function=discover_proxmox_backup_server_api_jobs,
+    check_function=check_proxmox_backup_server_api_jobs,
     check_default_parameters={
         "state_failed": 2,
         "state_warn": 1,
         "state_never_run": 1,
         "state_disabled": 0,
     },
-    check_ruleset_name="pbs_jobs",
+    check_ruleset_name="proxmox_backup_server_api_jobs",
 )

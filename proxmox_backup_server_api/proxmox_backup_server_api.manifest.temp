@@ -1,0 +1,34 @@
+{'author': 'Alex Wilms',
+ 'description': 'Special agent for Proxmox Backup Server (PBS) via the REST '
+                'API. Uses an API token to monitor node health (CPU, load, '
+                'memory, swap, uptime, root filesystem, subscription), per '
+                'datastore usage with PBS estimated-full projection, garbage '
+                'collection (schedule, last result, reclaimed space, bad '
+                'chunks), and configured prune / verify / sync / tape jobs '
+                '(each with its last run result correlated from the task '
+                'history). Auto-discovers one service per datastore and per '
+                'job. Configurable HTTPS port (default 8007) and optional TLS '
+                'certificate check bypass for self-signed certificates.',
+ 'download_url': 'https://github.com/Gulaschcowboy/checkmk_extensions',
+ 'files': {'cmk_addons_plugins': ['proxmox_backup_server_api/libexec/agent_proxmox_backup_server_api',
+                                  'proxmox_backup_server_api/agent_based/proxmox_backup_server_api_node.py',
+                                  'proxmox_backup_server_api/agent_based/proxmox_backup_server_api_datastore.py',
+                                  'proxmox_backup_server_api/agent_based/proxmox_backup_server_api_gc.py',
+                                  'proxmox_backup_server_api/agent_based/proxmox_backup_server_api_jobs.py',
+                                  'proxmox_backup_server_api/rulesets/proxmox_backup_server_api.py',
+                                  'proxmox_backup_server_api/rulesets/proxmox_backup_server_api_params.py',
+                                  'proxmox_backup_server_api/server_side_calls/proxmox_backup_server_api.py',
+                                  'proxmox_backup_server_api/graphing/proxmox_backup_server_api.py',
+                                  'proxmox_backup_server_api/checkman/proxmox_backup_server_api_node',
+                                  'proxmox_backup_server_api/checkman/proxmox_backup_server_api_memory',
+                                  'proxmox_backup_server_api/checkman/proxmox_backup_server_api_rootfs',
+                                  'proxmox_backup_server_api/checkman/proxmox_backup_server_api_subscription',
+                                  'proxmox_backup_server_api/checkman/proxmox_backup_server_api_datastore',
+                                  'proxmox_backup_server_api/checkman/proxmox_backup_server_api_gc',
+                                  'proxmox_backup_server_api/checkman/proxmox_backup_server_api_jobs']},
+ 'name': 'proxmox_backup_server_api',
+ 'title': 'Proxmox Backup Server (REST API)',
+ 'version': '1.0.0',
+ 'version.min_required': '2.3.0b1',
+ 'version.packaged': 'hermes',
+ 'version.usable_until': None}
