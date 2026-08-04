@@ -85,6 +85,16 @@ def check_proxmox_backup_server_api_gc(item, params, section):
                 render_func=render.timespan,
                 label="Last run",
             )
+            if starttime:
+                runtime = int(endtime) - int(starttime)
+                if runtime >= 0:
+                    yield from check_levels(
+                        runtime,
+                        levels_upper=params.get("runtime"),
+                        metric_name="gc_runtime",
+                        render_func=render.timespan,
+                        label="Runtime",
+                    )
         elif starttime and status is None:
             running_for = time.time() - int(starttime)
             yield Result(state=State.OK,

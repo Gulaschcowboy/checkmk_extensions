@@ -57,6 +57,13 @@ metric_proxmox_backup_server_api_backup_age = metrics.Metric(
     color=metrics.Color.PURPLE,
 )
 
+metric_proxmox_backup_server_api_gc_runtime = metrics.Metric(
+    name="gc_runtime",
+    title=Title("Runtime of last garbage collection"),
+    unit=UNIT_SECONDS,
+    color=metrics.Color.YELLOW,
+)
+
 graph_proxmox_backup_server_api_gc_bad_chunks = graphs.Graph(
     name="proxmox_backup_server_api_gc_bad_chunks",
     title=Title("PBS garbage collection: bad chunks"),

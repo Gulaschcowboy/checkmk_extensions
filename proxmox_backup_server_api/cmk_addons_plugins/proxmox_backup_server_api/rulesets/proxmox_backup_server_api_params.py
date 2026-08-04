@@ -181,6 +181,10 @@ def _gc_form():
                 ),
             ),
             "max_age": _age_levels(Title("Maximum age since last successful GC")),
+            "runtime": _age_levels(
+                Title("Maximum runtime of the last GC run"),
+                prefill=(6 * 3600.0, 12 * 3600.0),
+            ),
         }
     )
 

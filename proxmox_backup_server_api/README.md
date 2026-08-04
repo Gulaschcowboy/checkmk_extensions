@@ -17,7 +17,7 @@ One host runs the special agent against the PBS API; services are auto-discovere
 | `PBS Node Root FS` | Root filesystem usage |
 | `PBS Subscription` | Subscription/support status |
 | `PBS Datastore <name>` | Per-datastore usage + PBS estimated-full projection (one per datastore) |
-| `PBS GC <datastore>` | Garbage collection: schedule, last result, reclaimed space, bad chunks (one per datastore) |
+| `PBS GC <datastore>` | Garbage collection: schedule, last result, last runtime, reclaimed space, bad chunks (one per datastore) |
 | `PBS Job <type> <id>` | Configured prune / verify / sync / tape jobs, each with its last run result (one per job) |
 | `PBS Backup Age <datastore>[, Namespace: <ns>]` | Freshness of backups: age of the newest snapshot per backup group (VM/CT/host), one service per datastore and per datastore+namespace |
 
@@ -41,8 +41,8 @@ Authorization: PBSAPIToken=<token-id>:<token-secret>
 ## Installation
 
 ```sh
-mkp add proxmox_backup_server_api-1.1.2.mkp
-mkp enable proxmox_backup_server_api 1.1.2
+mkp add proxmox_backup_server_api-1.1.3.mkp
+mkp enable proxmox_backup_server_api 1.1.3
 ```
 
 Then in Checkmk:
@@ -88,7 +88,7 @@ From this directory:
 
 ```sh
 python3 ../../tools/build_mkp.py
-python3 ../../tools/verify_mkp.py . proxmox_backup_server_api-1.1.2.mkp agent_proxmox_backup_server_api
+python3 ../../tools/verify_mkp.py . proxmox_backup_server_api-1.1.3.mkp agent_proxmox_backup_server_api
 ```
 
 ## Layout
@@ -102,5 +102,5 @@ cmk_addons_plugins/proxmox_backup_server_api/
   rulesets/           special-agent + check-parameter rulesets
   server_side_calls/  builds the agent command line
 proxmox_backup_server_api.manifest.temp
-proxmox_backup_server_api-1.1.2.mkp
+proxmox_backup_server_api-1.1.3.mkp
 ```
