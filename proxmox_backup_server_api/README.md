@@ -41,8 +41,8 @@ Authorization: PBSAPIToken=<token-id>:<token-secret>
 ## Installation
 
 ```sh
-mkp add proxmox_backup_server_api-1.1.1.mkp
-mkp enable proxmox_backup_server_api 1.1.1
+mkp add proxmox_backup_server_api-1.1.2.mkp
+mkp enable proxmox_backup_server_api 1.1.2
 ```
 
 Then in Checkmk:
@@ -88,7 +88,7 @@ From this directory:
 
 ```sh
 python3 ../../tools/build_mkp.py
-python3 ../../tools/verify_mkp.py . proxmox_backup_server_api-1.1.1.mkp agent_proxmox_backup_server_api
+python3 ../../tools/verify_mkp.py . proxmox_backup_server_api-1.1.2.mkp agent_proxmox_backup_server_api
 ```
 
 ## Layout
@@ -102,5 +102,5 @@ cmk_addons_plugins/proxmox_backup_server_api/
   rulesets/           special-agent + check-parameter rulesets
   server_side_calls/  builds the agent command line
 proxmox_backup_server_api.manifest.temp
-proxmox_backup_server_api-1.1.1.mkp
+proxmox_backup_server_api-1.1.2.mkp
 ```

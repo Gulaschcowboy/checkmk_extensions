@@ -27,6 +27,24 @@ agent_section_proxmox_backup_server_api_node = AgentSection(
 )
 
 
+def _norm_levels(levels):
+    """Normalize a levels param to a ``(warn, crit)`` tuple.
+
+    Accepts the modern ``SimpleLevels`` shapes ``('fixed', (w, c))`` and
+    ``('no_levels', None)`` as well as a bare ``(w, c)`` default tuple, and
+    returns ``(None, None)`` when no levels apply. Unpacking the SimpleLevels
+    tuple by hand (``warn, crit = params[...]``) crashes with a TypeError, so
+    always route level params through here.
+    """
+    if isinstance(levels, tuple) and len(levels) == 2 and isinstance(levels[0], str):
+        if levels[0] == "fixed" and isinstance(levels[1], tuple):
+            return levels[1]
+        return (None, None)
+    if isinstance(levels, tuple) and len(levels) == 2:
+        return levels
+    return (None, None)
+
+
 # --------------------------------------------------------------------------
 # Node: CPU + load + uptime
 # --------------------------------------------------------------------------
@@ -46,14 +64,16 @@ def check_proxmox_backup_server_api_node(params, section):
     cpu = section.get("cpu")
     if cpu is not None:
         pct = float(cpu) * 100.0
-        warn, crit = params.get("cpu_levels", (80.0, 90.0))
+        warn, crit = _norm_levels(params.get("cpu_levels", (80.0, 90.0)))
         state = State.OK
-        if pct >= crit:
+        if crit is not None and pct >= crit:
             state = State.CRIT
-        elif pct >= warn:
+        elif warn is not None and pct >= warn:
             state = State.WARN
         yield Result(state=state, summary="CPU utilization: %.1f%%" % pct)
-        yield Metric("util", pct, levels=(warn, crit), boundaries=(0, 100))
+        yield Metric("util", pct,
+                     levels=(warn, crit) if warn is not None else None,
+                     boundaries=(0, 100))
 
     io_wait = section.get("wait")
     if io_wait is not None:
@@ -99,9 +119,9 @@ def discover_proxmox_backup_server_api_memory(section):
 
 
 def _levels_state(pct, warn, crit):
-    if pct >= crit:
+    if crit is not None and pct >= crit:
         return State.CRIT
-    if pct >= warn:
+    if warn is not None and pct >= warn:
         return State.WARN
     return State.OK
 
@@ -122,14 +142,18 @@ def check_proxmox_backup_server_api_memory(params, section):
         return
 
     pct = 100.0 * used / total
-    warn, crit = params.get("levels", (80.0, 90.0))
+    warn, crit = _norm_levels(params.get("levels", (80.0, 90.0)))
     state = _levels_state(pct, warn, crit)
     yield Result(state=state,
                  summary="RAM used: %s of %s (%.1f%%)"
                  % (render.bytes(used), render.bytes(total), pct))
-    yield Metric("mem_used", used, levels=(total * warn / 100, total * crit / 100),
+    yield Metric("mem_used", used,
+                 levels=(total * warn / 100, total * crit / 100)
+                 if warn is not None else None,
                  boundaries=(0, total))
-    yield Metric("mem_used_percent", pct, levels=(warn, crit), boundaries=(0, 100))
+    yield Metric("mem_used_percent", pct,
+                 levels=(warn, crit) if warn is not None else None,
+                 boundaries=(0, 100))
 
     swap = section.get("swap", {})
     if isinstance(swap, dict):
@@ -180,14 +204,18 @@ def check_proxmox_backup_server_api_rootfs(params, section):
         yield Result(state=State.UNKNOWN, summary="No root fs total reported")
         return
     pct = 100.0 * used / total
-    warn, crit = params.get("levels", (80.0, 90.0))
+    warn, crit = _norm_levels(params.get("levels", (80.0, 90.0)))
     state = _levels_state(pct, warn, crit)
     yield Result(state=state,
                  summary="Used: %s of %s (%.1f%%)"
                  % (render.bytes(used), render.bytes(total), pct))
-    yield Metric("fs_used", used, levels=(total * warn / 100, total * crit / 100),
+    yield Metric("fs_used", used,
+                 levels=(total * warn / 100, total * crit / 100)
+                 if warn is not None else None,
                  boundaries=(0, total))
-    yield Metric("fs_used_percent", pct, levels=(warn, crit), boundaries=(0, 100))
+    yield Metric("fs_used_percent", pct,
+                 levels=(warn, crit) if warn is not None else None,
+                 boundaries=(0, 100))
 
 
 check_plugin_proxmox_backup_server_api_rootfs = CheckPlugin(

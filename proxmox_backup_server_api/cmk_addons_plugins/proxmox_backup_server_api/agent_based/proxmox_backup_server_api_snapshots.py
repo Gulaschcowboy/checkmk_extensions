@@ -147,7 +147,12 @@ def check_proxmox_backup_server_api_snapshots(
 
     err_days = params.get("err_days")
     warn = crit = None
-    if err_days is not None:
+    if (
+        isinstance(err_days, tuple)
+        and len(err_days) == 2
+        and err_days[0] == "fixed"
+        and isinstance(err_days[1], tuple)
+    ):
         warn, crit = err_days[1]
     ignore_old = params.get("ignore_old_errors")
     throw = params.get("throw_warnings", True)
@@ -169,11 +174,10 @@ def check_proxmox_backup_server_api_snapshots(
             oldest_age = age
 
         level = "OK"
-        if err_days is not None:
-            if age > crit:
-                level = "CRIT"
-            elif age > warn:
-                level = "WARN"
+        if crit is not None and age > crit:
+            level = "CRIT"
+        elif warn is not None and age > warn:
+            level = "WARN"
 
         # ignore_old_errors: suppress alerts for backups so stale they are
         # considered abandoned rather than actively failing.
@@ -226,7 +230,7 @@ def check_proxmox_backup_server_api_snapshots(
     )
 
     if oldest_age is not None:
-        levels = (warn, crit) if err_days is not None else None
+        levels = (warn, crit) if warn is not None else None
         yield Metric("backup_age", oldest_age, levels=levels)
 
 

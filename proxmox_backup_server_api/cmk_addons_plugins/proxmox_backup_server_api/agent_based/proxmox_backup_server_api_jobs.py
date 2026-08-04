@@ -11,10 +11,10 @@ import time
 from cmk.agent_based.v2 import (
     AgentSection,
     CheckPlugin,
-    Metric,
     Result,
     Service,
     State,
+    check_levels,
     render,
 )
 
@@ -139,16 +139,14 @@ def check_proxmox_backup_server_api_jobs(item, params, section):
 
     if endtime:
         age = time.time() - int(endtime)
-        max_age = params.get("max_age")
-        gstate = State.OK
-        if max_age and not job.get("disable"):
-            warn, crit = max_age
-            if age >= crit:
-                gstate = State.CRIT
-            elif age >= warn:
-                gstate = State.WARN
-        yield Result(state=gstate, summary="Last run: %s ago" % render.timespan(age))
-        yield Metric("last_age", age)
+        levels = params.get("max_age") if not job.get("disable") else None
+        yield from check_levels(
+            age,
+            levels_upper=levels,
+            metric_name="last_age",
+            render_func=render.timespan,
+            label="Last run",
+        )
 
 
 check_plugin_proxmox_backup_server_api_jobs = CheckPlugin(

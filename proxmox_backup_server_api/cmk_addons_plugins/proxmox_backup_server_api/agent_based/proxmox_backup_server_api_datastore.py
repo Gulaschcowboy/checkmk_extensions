@@ -28,6 +28,23 @@ agent_section_proxmox_backup_server_api_datastore = AgentSection(
 )
 
 
+def _norm_levels(levels):
+    """Normalize a levels param to a ``(warn, crit)`` tuple.
+
+    Accepts the ``SimpleLevels`` shapes ``('fixed', (w, c))`` /
+    ``('no_levels', None)`` and a bare ``(w, c)`` default; returns
+    ``(None, None)`` when no levels apply. Hand-unpacking the SimpleLevels
+    tuple crashes with a TypeError, so always route level params through here.
+    """
+    if isinstance(levels, tuple) and len(levels) == 2 and isinstance(levels[0], str):
+        if levels[0] == "fixed" and isinstance(levels[1], tuple):
+            return levels[1]
+        return (None, None)
+    if isinstance(levels, tuple) and len(levels) == 2:
+        return levels
+    return (None, None)
+
+
 def discover_proxmox_backup_server_api_datastore(section):
     if "_error" in section:
         return
@@ -66,19 +83,22 @@ def check_proxmox_backup_server_api_datastore(item, params, section):
             total = None
     if total and total > 0:
         pct = 100.0 * used / total
-        warn, crit = params.get("levels", (80.0, 90.0))
+        warn, crit = _norm_levels(params.get("levels", (80.0, 90.0)))
         state = State.OK
-        if pct >= crit:
+        if crit is not None and pct >= crit:
             state = State.CRIT
-        elif pct >= warn:
+        elif warn is not None and pct >= warn:
             state = State.WARN
         yield Result(state=state,
                      summary="Used: %s of %s (%.1f%%)"
                      % (render.bytes(used), render.bytes(total), pct))
         yield Metric("fs_used", used,
-                     levels=(total * warn / 100, total * crit / 100),
+                     levels=(total * warn / 100, total * crit / 100)
+                     if warn is not None else None,
                      boundaries=(0, total))
-        yield Metric("fs_used_percent", pct, levels=(warn, crit), boundaries=(0, 100))
+        yield Metric("fs_used_percent", pct,
+                     levels=(warn, crit) if warn is not None else None,
+                     boundaries=(0, 100))
         avail = ds.get("avail")
         if avail is not None:
             yield Metric("fs_free", int(avail), boundaries=(0, total))

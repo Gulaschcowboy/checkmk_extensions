@@ -9,6 +9,7 @@ from cmk.agent_based.v2 import (
     Result,
     Service,
     State,
+    check_levels,
     render,
 )
 
@@ -77,17 +78,13 @@ def check_proxmox_backup_server_api_gc(item, params, section):
 
         if endtime:
             age = time.time() - int(endtime)
-            summary = "Last run: %s ago" % render.timespan(age)
-            max_age = params.get("max_age")
-            gstate = State.OK
-            if max_age:
-                warn, crit = max_age
-                if age >= crit:
-                    gstate = State.CRIT
-                elif age >= warn:
-                    gstate = State.WARN
-            yield Result(state=gstate, summary=summary)
-            yield Metric("last_age", age)
+            yield from check_levels(
+                age,
+                levels_upper=params.get("max_age"),
+                metric_name="last_age",
+                render_func=render.timespan,
+                label="Last run",
+            )
         elif starttime and status is None:
             running_for = time.time() - int(starttime)
             yield Result(state=State.OK,
