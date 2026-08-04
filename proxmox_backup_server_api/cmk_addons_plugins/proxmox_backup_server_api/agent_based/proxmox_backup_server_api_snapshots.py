@@ -11,7 +11,6 @@ One service is discovered per datastore and one per datastore+namespace
 (``"<store>, Namespace: <ns>"``), mirroring the legacy ``pbs_snapshot_age``
 plugin so existing rules keep working.
 """
-import fnmatch
 import json
 import re
 import time
@@ -123,15 +122,24 @@ def check_proxmox_backup_server_api_snapshots(
         yield Result(state=State.UNKNOWN, summary=err)
         return
 
-    # Drop groups the user asked to ignore (exact key or shell-style wildcard,
-    # e.g. "vm/9000", "vm/*", "*/9000"). Ignored groups are neither counted
-    # nor listed in the details.
+    # Drop groups the user asked to ignore. Each entry is a regular expression
+    # matched against the group key ("<type>/<id>", e.g. "vm/9000") with the
+    # usual Checkmk infix semantics (re.search — anchor with ^ / $ if needed),
+    # so "vm/" ignores every VM, "vm/(9000|9001)" a set, "^ct/300$" exactly one.
+    # Ignored groups are neither counted nor listed in the details. Invalid
+    # patterns are skipped rather than crashing the check.
     ignore_patterns = params.get("ignore_groups") or []
+    compiled_ignores = []
+    for pat in ignore_patterns:
+        try:
+            compiled_ignores.append(re.compile(pat))
+        except re.error:
+            continue
     num_ignored = 0
-    if ignore_patterns:
+    if compiled_ignores:
         kept = {}
         for gkey, g in groups.items():
-            if any(fnmatch.fnmatch(gkey, pat) for pat in ignore_patterns):
+            if any(rx.search(gkey) for rx in compiled_ignores):
                 num_ignored += 1
                 continue
             kept[gkey] = g

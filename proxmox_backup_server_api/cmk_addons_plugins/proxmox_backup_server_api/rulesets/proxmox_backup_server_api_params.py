@@ -296,11 +296,14 @@ def _snapshots_form():
                     help_text=Help(
                         "Backup groups listed here are completely excluded "
                         "from this check — they are neither counted nor shown "
-                        "in the details. Enter one group per line in the "
-                        "'<type>/<id>' notation, e.g. 'vm/9000', "
-                        "'ct/300' or 'host/pve0'. Shell-style wildcards are "
-                        "supported, so 'vm/*' ignores every VM and '*/9000' "
-                        "ignores id 9000 of any type."
+                        "in the details. Enter one regular expression per line, "
+                        "matched against the group key in '<type>/<id>' notation "
+                        "(e.g. 'vm/9000', 'ct/300', 'host/pve0'). Matching uses "
+                        "the usual Checkmk infix behaviour, so the pattern may "
+                        "match anywhere in the key unless you anchor it with ^ "
+                        "or $: 'vm/' ignores every VM, 'vm/(9000|9001)' a set, "
+                        "'vm/90..' any id from 9000 to 9099, and '^ct/300$' "
+                        "exactly that container. Invalid expressions are ignored."
                     ),
                     element_template=String(
                         prefill=DefaultValue("vm/9000"),

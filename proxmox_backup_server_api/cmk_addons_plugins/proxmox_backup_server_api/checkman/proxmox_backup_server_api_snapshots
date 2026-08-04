@@ -20,8 +20,10 @@ description:
  can be excluded from alerting (treated as abandoned); such suppressed groups are
  still listed in the service details, flagged with {(ignored by rule)}, but do not
  affect the state or the summary. Individual backup groups can be excluded
- entirely via the "Ignore these groups" option, which accepts exact keys
- ({vm/9000}) or shell-style wildcards ({vm/*}, {*/9000}). The oldest backup age
+ entirely via the "Ignore these groups" option, which accepts regular
+ expressions matched against the group key with the usual Checkmk infix
+ behaviour ({vm/} for all VMs, {vm/(9000|9001)} for a set, {^ct/300$} for
+ exactly one). The oldest backup age
  in the item is exported as the {backup_age} metric.
 
 item:

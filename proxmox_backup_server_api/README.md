@@ -78,8 +78,9 @@ The `PBS Backup Age` service has its own two rulesets:
     abandoned and no longer alert. They remain visible in the service details
     flagged with `(ignored by rule)`, but do not affect the state or summary.
   - **Ignore these groups** — exclude individual groups entirely (neither counted
-    nor shown). Accepts exact keys (`vm/9000`) or shell-style wildcards (`vm/*`,
-    `*/9000`), one per line.
+    nor shown). Accepts one regular expression per line, matched against the group
+    key with the usual Checkmk infix behaviour (`vm/` for all VMs,
+    `vm/(9000|9001)` for a set, `^ct/300$` for exactly one).
 
 ## Building from source
 
