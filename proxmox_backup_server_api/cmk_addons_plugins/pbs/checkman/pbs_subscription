@@ -1,0 +1,16 @@
+title: Proxmox Backup Server: Subscription
+agents: pbs
+catalog: os/storage
+license: GPLv2
+distribution: check_mk
+
+description:
+ This check reports the subscription status of a Proxmox Backup Server node as
+ returned by the {/nodes/<node>/subscription} REST API endpoint.
+
+ An active subscription is {OK}, an invalid or expired one is {CRIT}. A missing
+ subscription key ("notfound") defaults to {WARN} and is configurable (set it to
+ {OK} for community installations without a subscription).
+
+discovery:
+ One service {PBS Subscription} is created if subscription data is available.

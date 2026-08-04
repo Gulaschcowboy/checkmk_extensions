@@ -1,0 +1,23 @@
+title: Proxmox Backup Server: Datastore Usage
+agents: pbs
+catalog: os/storage
+license: GPLv2
+distribution: check_mk
+
+description:
+ This check monitors the disk usage of a Proxmox Backup Server datastore. Data
+ is collected via the special agent {agent_pbs} from the
+ {/admin/datastore/<store>/status} and {/status/datastore-usage} REST API
+ endpoints.
+
+ The service goes {WARN}/{CRIT} when usage exceeds the configured percentage
+ levels (default 80/90%). Additionally, PBS's own estimated "datastore full"
+ projection is evaluated: the service warns when the datastore is projected to
+ be full within 30 days and goes critical within 7 days (both configurable).
+ Datastores in maintenance mode are annotated as {WARN}.
+
+item:
+ The datastore name, for example {backup1}.
+
+discovery:
+ One service {PBS Datastore <name>} is created per datastore.

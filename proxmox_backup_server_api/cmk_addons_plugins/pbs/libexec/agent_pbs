@@ -1,0 +1,269 @@
+#!/usr/bin/env python3
+"""Checkmk special agent for Proxmox Backup Server (PBS REST API).
+
+Polls a Proxmox Backup Server over its REST API (default port 8007) using an
+API token (header ``Authorization: PBSAPIToken=<tokenid>:<secret>``) and emits
+Checkmk agent sections:
+
+    <<<pbs_node:sep(0)>>>       node status: cpu/load/memory/swap/uptime/root fs,
+                                 kernel + subscription status
+    <<<pbs_datastore:sep(0)>>>  per datastore: total/used/avail, estimated full
+    <<<pbs_gc:sep(0)>>>         per datastore: garbage-collection schedule,
+                                 next run, last result, removed/bad chunks
+    <<<pbs_jobs:sep(0)>>>       configured prune / verify / sync / tape jobs
+                                 with their last task result
+
+A read-only API token with Datastore.Audit (+ Sys.Audit for node status) is
+sufficient. All requests are GET and read-only.
+"""
+import argparse
+import json
+import sys
+import ssl
+from urllib.parse import quote
+from urllib.request import Request, urlopen
+from urllib.error import HTTPError, URLError
+
+
+def parse_args(argv):
+    p = argparse.ArgumentParser(description="Checkmk Proxmox Backup Server agent")
+    p.add_argument("--token-id", required=True,
+                   help="API token ID, e.g. root@pam!checkmk")
+    p.add_argument("--token-secret", required=True, help="API token secret")
+    p.add_argument("--port", type=int, default=8007,
+                   help="HTTPS port (default 8007)")
+    p.add_argument("--node", default="localhost",
+                   help="PBS node name for node/task endpoints (default localhost)")
+    p.add_argument("--task-limit", type=int, default=500,
+                   help="How many recent tasks to scan for job results")
+    p.add_argument("--no-cert-check", action="store_true",
+                   help="Disable TLS certificate verification (self-signed)")
+    p.add_argument("--timeout", type=int, default=20,
+                   help="Per-request timeout (s)")
+    p.add_argument("hostname", help="PBS host / address")
+    return p.parse_args(argv)
+
+
+def make_context(no_cert_check):
+    ctx = ssl.create_default_context()
+    if no_cert_check:
+        ctx.check_hostname = False
+        ctx.verify_mode = ssl.CERT_NONE
+    return ctx
+
+
+class PBSClient:
+    def __init__(self, host, port, token_id, token_secret, ctx, timeout):
+        if ":" in host and not host.startswith("["):
+            host = "[%s]" % host
+        self.base = "https://%s:%d/api2/json" % (host, port)
+        self.ctx = ctx
+        self.timeout = timeout
+        self.auth = "PBSAPIToken=%s:%s" % (token_id, token_secret)
+
+    def get(self, path):
+        url = "%s/%s" % (self.base, path)
+        req = Request(url, method="GET")
+        req.add_header("Authorization", self.auth)
+        with urlopen(req, context=self.ctx, timeout=self.timeout) as resp:
+            payload = json.loads(resp.read().decode("utf-8"))
+        return payload.get("data")
+
+    def try_get(self, path):
+        """GET returning (data, error_string)."""
+        try:
+            return self.get(path), None
+        except (HTTPError, URLError, ValueError) as exc:
+            return None, str(exc)
+
+
+def emit(section, payload):
+    sys.stdout.write("<<<%s:sep(0)>>>\n" % section)
+    sys.stdout.write(json.dumps(payload) + "\n")
+
+
+def _newest_task(tasks, worker_type, worker_ids):
+    """Return the newest finished/running task matching worker_type and one of
+    the accepted worker_ids (list of strings, or None to accept any)."""
+    best = None
+    for t in tasks:
+        if t.get("worker_type") != worker_type:
+            continue
+        if worker_ids is not None and t.get("worker_id") not in worker_ids:
+            continue
+        if best is None or t.get("starttime", 0) > best.get("starttime", 0):
+            best = t
+    if best is None:
+        return {}
+    return {
+        "upid": best.get("upid"),
+        "worker_id": best.get("worker_id"),
+        "starttime": best.get("starttime"),
+        "endtime": best.get("endtime"),
+        # status is absent/None while the task is still running
+        "status": best.get("status"),
+    }
+
+
+def main(argv=None):
+    args = parse_args(argv if argv is not None else sys.argv[1:])
+    ctx = make_context(args.no_cert_check)
+    client = PBSClient(args.hostname, args.port, args.token_id,
+                       args.token_secret, ctx, args.timeout)
+    node = args.node
+
+    # ----- Node status + subscription -----------------------------------
+    node_data, err = client.try_get("nodes/%s/status" % quote(node))
+    if err:
+        node_out = {"_error": err}
+    else:
+        node_out = node_data or {}
+        sub, sub_err = client.try_get("nodes/%s/subscription" % quote(node))
+        node_out["subscription"] = sub if not sub_err else {"_error": sub_err}
+    emit("pbs_node", node_out)
+
+    # ----- Recent tasks (used to correlate job/gc results) --------------
+    tasks, tasks_err = client.try_get(
+        "nodes/%s/tasks?limit=%d&start=0" % (quote(node), args.task_limit))
+    if tasks_err or not isinstance(tasks, list):
+        tasks = []
+
+    # ----- Datastores: usage + gc status --------------------------------
+    stores, st_err = client.try_get("admin/datastore")
+    usage, _ = client.try_get("status/datastore-usage")
+    usage_by_store = {}
+    if isinstance(usage, list):
+        for u in usage:
+            if isinstance(u, dict) and u.get("store"):
+                usage_by_store[u["store"]] = u
+
+    datastores = {}
+    if st_err:
+        datastores = {"_error": st_err}
+    elif isinstance(stores, list):
+        for s in stores:
+            name = s.get("store")
+            if not name:
+                continue
+            entry = {
+                "comment": s.get("comment"),
+                "mount_status": s.get("mount-status"),
+                "maintenance": s.get("maintenance"),
+            }
+            status, s_e = client.try_get(
+                "admin/datastore/%s/status" % quote(name))
+            if s_e:
+                entry["_status_error"] = s_e
+            elif isinstance(status, dict):
+                entry["total"] = status.get("total")
+                entry["used"] = status.get("used")
+                entry["avail"] = status.get("avail")
+            u = usage_by_store.get(name, {})
+            entry["estimated_full_date"] = u.get("estimated-full-date")
+            datastores[name] = entry
+    emit("pbs_datastore", datastores)
+
+    # ----- Garbage collection (per datastore) ---------------------------
+    gc_list, gc_err = client.try_get("admin/gc")
+    gc_out = {}
+    if gc_err:
+        gc_out = {"_error": gc_err}
+    elif isinstance(gc_list, list):
+        for g in gc_list:
+            store = g.get("store")
+            if not store:
+                continue
+            last = _newest_task(tasks, "garbage_collection", [store])
+            gc_out[store] = {
+                "schedule": g.get("schedule"),
+                "next_run": g.get("next-run"),
+                "upid": g.get("upid"),
+                "removed_bytes": g.get("removed-bytes"),
+                "removed_chunks": g.get("removed-chunks"),
+                "removed_bad": g.get("removed-bad"),
+                "still_bad": g.get("still-bad"),
+                "pending_chunks": g.get("pending-chunks"),
+                "pending_bytes": g.get("pending-bytes"),
+                "disk_bytes": g.get("disk-bytes"),
+                "disk_chunks": g.get("disk-chunks"),
+                "last": last,
+            }
+    emit("pbs_gc", gc_out)
+
+    # ----- Configured jobs: prune / verify / sync / tape ----------------
+    jobs = {}
+
+    prune, pr_err = client.try_get("config/prune")
+    prune_jobs = []
+    if not pr_err and isinstance(prune, list):
+        for j in prune:
+            jid = j.get("id")
+            store = j.get("store")
+            last = _newest_task(tasks, "prunejob", [jid, store])
+            prune_jobs.append({
+                "id": jid,
+                "store": store,
+                "schedule": j.get("schedule"),
+                "disable": bool(j.get("disable", False)),
+                "keep": {k: v for k, v in j.items() if k.startswith("keep-")},
+                "last": last,
+            })
+    jobs["prune"] = {"_error": pr_err} if pr_err else prune_jobs
+
+    verify, v_err = client.try_get("config/verify")
+    verify_jobs = []
+    if not v_err and isinstance(verify, list):
+        for j in verify:
+            jid = j.get("id")
+            last = _newest_task(tasks, "verificationjob", [jid])
+            verify_jobs.append({
+                "id": jid,
+                "store": j.get("store"),
+                "schedule": j.get("schedule"),
+                "disable": bool(j.get("disable", False)),
+                "last": last,
+            })
+    jobs["verify"] = {"_error": v_err} if v_err else verify_jobs
+
+    sync, sy_err = client.try_get("config/sync")
+    sync_jobs = []
+    if not sy_err and isinstance(sync, list):
+        for j in sync:
+            jid = j.get("id")
+            last = _newest_task(tasks, "syncjob", [jid])
+            sync_jobs.append({
+                "id": jid,
+                "store": j.get("store"),
+                "remote": j.get("remote"),
+                "remote_store": j.get("remote-store"),
+                "schedule": j.get("schedule"),
+                "disable": bool(j.get("disable", False)),
+                "last": last,
+            })
+    jobs["sync"] = {"_error": sy_err} if sy_err else sync_jobs
+
+    tape, tp_err = client.try_get("config/tape-backup-job")
+    tape_jobs = []
+    if not tp_err and isinstance(tape, list):
+        for j in tape:
+            jid = j.get("id")
+            last = _newest_task(tasks, "tape-backup-job", [jid])
+            if not last:
+                last = _newest_task(tasks, "tape-backup", [jid])
+            tape_jobs.append({
+                "id": jid,
+                "store": j.get("store"),
+                "pool": j.get("pool"),
+                "drive": j.get("drive"),
+                "schedule": j.get("schedule"),
+                "disable": bool(j.get("disable", False)),
+                "last": last,
+            })
+    jobs["tape"] = {"_error": tp_err} if tp_err else tape_jobs
+
+    emit("pbs_jobs", jobs)
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

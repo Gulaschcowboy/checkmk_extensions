@@ -10,6 +10,7 @@ README with install and build instructions.
 | Package    | Description                                                        |
 |------------|--------------------------------------------------------------------|
 | [`opnsense`](opnsense/) | OPNsense firewall monitoring via the REST API — firmware/update status, per-service, system/uptime/load, memory/swap, per-filesystem. |
+| [`proxmox_backup_server_api`](proxmox_backup_server_api/) | Proxmox Backup Server monitoring via the REST API — node CPU/load/memory/uptime/root FS, subscription, per-datastore usage with estimated-full projection, garbage collection, and configured prune/verify/sync/tape jobs. |
 
 ## Installing a package
 

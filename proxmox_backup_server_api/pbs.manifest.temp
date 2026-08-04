@@ -1,0 +1,34 @@
+{'author': 'Alex Wilms',
+ 'description': 'Special agent for Proxmox Backup Server (PBS) via the REST '
+                'API. Uses an API token to monitor node health (CPU, load, '
+                'memory, swap, uptime, root filesystem, subscription), per '
+                'datastore usage with PBS estimated-full projection, garbage '
+                'collection (schedule, last result, reclaimed space, bad '
+                'chunks), and configured prune / verify / sync / tape jobs '
+                '(each with its last run result correlated from the task '
+                'history). Auto-discovers one service per datastore and per '
+                'job. Configurable HTTPS port (default 8007) and optional TLS '
+                'certificate check bypass for self-signed certificates.',
+ 'download_url': 'https://github.com/Gulaschcowboy/checkmk_extensions',
+ 'files': {'cmk_addons_plugins': ['pbs/libexec/agent_pbs',
+                                  'pbs/agent_based/pbs_node.py',
+                                  'pbs/agent_based/pbs_datastore.py',
+                                  'pbs/agent_based/pbs_gc.py',
+                                  'pbs/agent_based/pbs_jobs.py',
+                                  'pbs/rulesets/pbs.py',
+                                  'pbs/rulesets/pbs_params.py',
+                                  'pbs/server_side_calls/pbs.py',
+                                  'pbs/graphing/pbs.py',
+                                  'pbs/checkman/pbs_node',
+                                  'pbs/checkman/pbs_memory',
+                                  'pbs/checkman/pbs_rootfs',
+                                  'pbs/checkman/pbs_subscription',
+                                  'pbs/checkman/pbs_datastore',
+                                  'pbs/checkman/pbs_gc',
+                                  'pbs/checkman/pbs_jobs']},
+ 'name': 'pbs',
+ 'title': 'Proxmox Backup Server (REST API)',
+ 'version': '1.0.0',
+ 'version.min_required': '2.3.0b1',
+ 'version.packaged': 'hermes',
+ 'version.usable_until': None}

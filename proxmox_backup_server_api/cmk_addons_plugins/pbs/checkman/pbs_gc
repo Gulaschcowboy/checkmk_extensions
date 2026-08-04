@@ -1,0 +1,24 @@
+title: Proxmox Backup Server: Garbage Collection
+agents: pbs
+catalog: os/storage
+license: GPLv2
+distribution: check_mk
+
+description:
+ This check monitors the garbage collection (GC) of a Proxmox Backup Server
+ datastore. Data is collected via the special agent {agent_pbs} from the
+ {/admin/gc} REST API endpoint, and the last GC task result is correlated from
+ the node task history ({/nodes/<node>/tasks}).
+
+ The service reflects the result of the last garbage collection run: {OK} on
+ success, {WARN} on warnings, {CRIT} on failure (all configurable). It also
+ reports the amount of space reclaimed, the on-disk chunk store size, and the
+ number of bad chunks; any chunks that are still bad after GC are {CRIT}.
+ Optionally the service can go {WARN}/{CRIT} when the last successful GC is
+ older than a configured age.
+
+item:
+ The datastore name, for example {backup1}.
+
+discovery:
+ One service {PBS GC <name>} is created per datastore that has a GC schedule.

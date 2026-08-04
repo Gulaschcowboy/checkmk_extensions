@@ -1,0 +1,25 @@
+title: Proxmox Backup Server: Backup Jobs (Prune/Verify/Sync/Tape)
+agents: pbs
+catalog: os/storage
+license: GPLv2
+distribution: check_mk
+
+description:
+ This check monitors configured Proxmox Backup Server jobs: prune jobs, verify
+ jobs, sync jobs and tape backup jobs. Data is collected via the special agent
+ {agent_pbs} from the {/config/prune}, {/config/verify}, {/config/sync} and
+ {/config/tape-backup-job} REST API endpoints; the last run result of each job
+ is correlated from the node task history ({/nodes/<node>/tasks}).
+
+ The service reflects the result of the last run of the job: {OK} on success,
+ {WARN} on warnings, {CRIT} on failure (all configurable). Disabled jobs default
+ to {OK}. The configured schedule, datastore and (per type) retention / remote /
+ pool / drive settings are shown for information. Optionally the service can go
+ {WARN}/{CRIT} when the last successful run is older than a configured age.
+
+item:
+ The job type and its ID, for example {Prune backup1}, {Verify my-verify},
+ {Sync offsite} or {Tape weekly-tape}.
+
+discovery:
+ One service {PBS Job <type> <id>} is created per configured job.
