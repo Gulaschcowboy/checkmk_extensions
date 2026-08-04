@@ -61,6 +61,31 @@ special-agent ruleset). Supply:
 Create an API key/secret in OPNsense under *System → Access → Users →
 (edit user) → API keys*.
 
+## Required API key privileges
+
+The special agent only ever performs **read-only** calls (GET, or POST with an
+empty body). The API key inherits the privileges of the OPNsense user it belongs
+to, so create a dedicated **read-only monitoring user** and grant exactly the four
+privileges below — nothing more. Assign them under *System → Access → Users →
+(edit user) → Effective Privileges* (or via a group).
+
+| OPNsense privilege | Covers API pattern        | Used for                                    |
+|--------------------|---------------------------|---------------------------------------------|
+| **System: Firmware** | `api/core/firmware/*`     | `core/firmware/status` — firmware/update status |
+| **Status: Services** | `api/core/service/*`      | `core/service/search` — per-daemon service discovery |
+| **System: Status**   | `api/core/system/status*` | `core/system/status` — overall system status |
+| **Lobby: Dashboard** | `api/diagnostics/system/*` (dashboard set) | `diagnostics/system/system_time`, `…/system_resources`, `…/system_disk`, `…/system_swap`, `…/system_temperature` — uptime, load, memory, swap, disk, temperature |
+
+Notes:
+- **Lobby: Dashboard** is the privilege that exposes the read-only
+  `diagnostics/system/*` gauge endpoints (they are the same ones the OPNsense
+  dashboard widgets consume); no separate *Diagnostics* privilege is needed for
+  the metrics this agent reads.
+- Granting **System: Deny config write** to the monitoring user in addition is a
+  reasonable hardening step — the agent never writes configuration.
+- Privilege ↔ endpoint mapping verified against OPNsense core `ACL.xml`
+  (`OPNsense/Core/ACL/ACL.xml`) on the `master` branch.
+
 ## Build from source
 
 The build/verify scripts live in the Hermes `checkmk-mkp-plugins` skill and are
