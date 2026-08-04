@@ -1,4 +1,4 @@
-{'author': 'Hermes Agent',
+{'author': 'Alex Wilms',
  'description': 'Special agent for OPNsense firewalls via the REST API. '
                 'Monitors firmware/update status, all services (one service '
                 'per OPNsense service, auto-discovered), system status, '
