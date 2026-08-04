@@ -101,5 +101,8 @@ adding or removing plugin files.
 
 ## Verified against
 
-Checkmk 2.5.0p10 (Enterprise/CRE cmk_addons layout). Target firewall running
-OPNsense 26.7.x, IPv6-only, REST API on port 8443.
+- Checkmk 2.5.0p10 (Enterprise/CRE cmk_addons layout)
+- Checkmk 3.0.0.2026.08.03 (daily build)
+
+Target firewall running OPNsense 26.7.x, REST API on port 8443, reachable over
+both IPv6 and IPv4.
