@@ -80,10 +80,3 @@ mail_domain_health/
 ├── mail_domain_health.manifest.temp                  # MKP manifest
 └── mail_domain_health-1.4.0.mkp                      # built package (upstream, unchanged)
 ```
-
-Note: this package spans **two** MKP file categories (`cmk_addons_plugins` and
-`gui`). The repo's `tools/build_mkp.py` only packs `cmk_addons_plugins`, so it
-**cannot rebuild this package** — it would silently drop the `gui` dashboard. The
-shipped `.mkp` is the upstream artifact byte-for-byte. If source changes are ever
-needed, rebuild only with the Checkmk site `mkp` tool (`mkp package`), which
-handles both categories. Do not rebuild it with `build_mkp.py`.
