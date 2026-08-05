@@ -27,6 +27,7 @@ One host runs the special agent against the PBS API; services are auto-discovere
 - A PBS API token with read-only audit privileges — role `Audit` on path `/`
   (privileges `Datastore.Audit` + `Sys.Audit`) is sufficient. Create it under
   **Configuration > Access Control > API Token** in the PBS UI.
+  Then add the token and it's permission under **Configuration > Access Control > Permissions** 
 
 ## Authentication note
 
