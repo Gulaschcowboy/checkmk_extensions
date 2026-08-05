@@ -1,0 +1,39 @@
+title: PowerDNS Authoritative Server: Single zone
+agents: linux
+catalog: app/powerdns
+license: GPLv2
+author: Christian Wirtz
+distribution: powerdns-mkp
+description:
+ Monitors one configured zone and graphs the number of records it contains.
+
+ Besides absolute upper and lower levels on the record count, the check compares
+ the count with the previous check and reports a large relative drop, {WARN} at
+ 25 percent and {CRIT} at 50 percent by default. This catches a zone that was
+ accidentally emptied or truncated without requiring a hand-tuned absolute
+ level for every zone.
+
+ For primary zones (kind Master or Producer) the check compares {serial} with
+ {notified_serial}. A brief mismatch right after an edit is normal, so the
+ mismatch has to persist before it is reported: {WARN} after 15 minutes,
+ {CRIT} after one hour. This is how you notice that NOTIFY delivery to your
+ secondaries broke.
+
+ For secondary zones (kind Slave or Consumer) the age of {last_check} is
+ monitored, so a zone that silently stopped transferring is detected before its
+ data expires. A secondary that was never successfully transferred is {WARN}.
+
+ The DNSSEC state of the zone is reported. It is {OK} either way by default;
+ set the state for unsigned zones to {WARN} on hosts where every zone is
+ supposed to be signed.
+
+item:
+ The zone name without the trailing dot, for example {example.com}.
+
+discovery:
+ One service per zone, controlled by the ruleset {PowerDNS zone discovery}.
+ That rule can restrict discovery by name (include and exclude regular
+ expressions) and by zone kind, or switch off per-zone services entirely and
+ keep only the summary service. Discovered services carry the labels
+ {powerdns/zone_kind}, {powerdns/dnssec} and, for catalog zone members,
+ {powerdns/catalog}.

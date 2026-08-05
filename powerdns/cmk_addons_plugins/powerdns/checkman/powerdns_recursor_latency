@@ -1,0 +1,21 @@
+title: PowerDNS Recursor: Latency
+agents: linux
+catalog: app/powerdns
+license: GPLv2
+author: Christian Wirtz
+distribution: powerdns-mkp
+description:
+ Reports the recursor's question-answer latency and the portion of it spent
+ inside the recursor itself. PowerDNS reports both in microseconds; the check
+ converts them to seconds. Defaults are {WARN} at 100 ms and {CRIT} at 500 ms
+ for the overall latency.
+
+ In addition the check graphs the answer time distribution using the recursor's
+ own histogram buckets (under 1 ms, 1-10 ms, 10-100 ms, 100-1000 ms and slower
+ than one second) and evaluates the share of answers slower than 100 ms, with
+ levels at 10 and 25 percent. The distribution is more informative than the
+ average, because a cache-heavy workload keeps the average low even while a
+ growing tail of slow answers annoys users.
+
+discovery:
+ One service is created when the {qa-latency} counter is present.

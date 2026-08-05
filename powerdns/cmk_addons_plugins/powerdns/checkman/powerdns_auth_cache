@@ -1,0 +1,23 @@
+title: PowerDNS Authoritative Server: Caches
+agents: linux
+catalog: app/powerdns
+license: GPLv2
+author: Christian Wirtz
+distribution: powerdns-mkp
+description:
+ Monitors the packet cache and the query cache of the authoritative server.
+
+ The hit ratios are computed from the change of the hit and miss counters since
+ the previous check rather than from their absolute values. That way the ratio
+ describes current behaviour instead of the average since the last restart,
+ which is what you want when you are looking for a cache that stopped working.
+
+ Cache sizes are reported for the packet cache, query cache, key cache,
+ metadata cache and signature cache. The deferred insert and lookup counters
+ indicate contention on the cache locks and have upper levels by default.
+
+ No levels are set on the hit ratios out of the box, because a sensible lower
+ bound depends entirely on your query mix.
+
+discovery:
+ One service is created when packet cache or query cache counters are present.

@@ -1,0 +1,26 @@
+title: PowerDNS Recursor: Query rates
+agents: linux
+catalog: app/powerdns
+license: GPLv2
+author: Christian Wirtz
+distribution: powerdns-mkp
+description:
+ Rates for the recursor's incoming and outgoing traffic: questions received,
+ outgoing queries to authoritative servers, and the split of answers into
+ NOERROR, NXDOMAIN and SERVFAIL.
+
+ Upstream problems are tracked separately: outgoing timeouts, throttled
+ outgoing queries and unreachable authoritative servers. Locally caused drops
+ are also covered: over-capacity drops, resource limits hit, policy drops, and
+ rejected queries from clients outside the ACL.
+
+ The share of questions answered with SERVFAIL is computed as well, with levels
+ at 5 and 20 percent. On a healthy resolver this is dominated by genuinely
+ broken remote domains and sits well below one percent.
+
+ All values are counter rates. The first check after discovery reports
+ {Initializing counters}, and a daemon restart causes one skipped cycle instead
+ of a bogus negative rate.
+
+discovery:
+ One service is created when the {questions} counter is present.

@@ -1,0 +1,22 @@
+title: PowerDNS Recursor: Caches
+agents: linux
+catalog: app/powerdns
+license: GPLv2
+author: Christian Wirtz
+distribution: powerdns-mkp
+description:
+ Monitors the recursor's record cache and packet cache.
+
+ Both hit ratios are computed from the counter change since the previous check,
+ so they reflect current behaviour rather than the lifetime average. The record
+ cache fill level is reported relative to {max-cache-entries}, with levels at 90
+ and 98 percent, because a cache running against its ceiling starts evicting
+ entries that are still useful.
+
+ Also reported: negative cache entries, packet cache entries, the number of
+ currently throttled nameservers, nameserver speed entries and the number of
+ nameservers in the failure cache. A growing throttle or failure count usually
+ points at a network path problem rather than at the recursor itself.
+
+discovery:
+ One service is created when the {cache-entries} counter is present.

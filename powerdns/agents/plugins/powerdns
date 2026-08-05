@@ -1,0 +1,578 @@
+#!/usr/bin/env python3
+"""Checkmk agent plugin for PowerDNS Authoritative Server and PowerDNS Recursor.
+
+Emits three sections:
+
+    <<<powerdns_auth:sep(0)>>>          statistics of the authoritative server
+    <<<powerdns_auth_zones:sep(0)>>>    zone inventory incl. record counts
+    <<<powerdns_recursor:sep(0)>>>      statistics of the recursor
+
+Each section contains a single JSON object.  The plugin never exits non-zero and
+never emits a partial section: on failure it reports ``reachable: false`` plus an
+error string so that the check goes CRIT instead of the service going stale.
+
+Data sources, in order of preference:
+
+  1. the built-in HTTP API (``/api/v1/...``) -- richest, needed for zones
+  2. the control socket (``pdns_control show *`` / ``rec_control get-all``) --
+     statistics only, no API key required
+
+Configuration: /etc/check_mk/powerdns.cfg (see powerdns.cfg.example).  Without a
+config file the plugin auto-detects everything from the PowerDNS configuration.
+"""
+
+from __future__ import annotations
+
+import configparser
+import json
+import os
+import re
+import subprocess
+import sys
+import time
+import urllib.error
+import urllib.request
+
+PLUGIN_VERSION = "1.0.0"
+
+CFG_FILE = os.path.join(os.environ.get("MK_CONFDIR", "/etc/check_mk"), "powerdns.cfg")
+VAR_DIR = os.environ.get("MK_VARDIR", "/var/lib/check_mk_agent")
+STATE_FILE = os.path.join(VAR_DIR, "powerdns_zone_records.json")
+
+DEFAULTS = {
+    "auth": {
+        "enabled": "auto",
+        "url": "",
+        "api_key": "",
+        "config": "/etc/powerdns/pdns.conf",
+        "control": "pdns_control",
+        "timeout": "10",
+        # Zone handling
+        "zones": "yes",
+        "zone_refresh": "900",
+        "records": "auto",  # auto | count_param | full | none
+        "max_zones": "2000",
+        "zone_budget": "60",
+    },
+    "recursor": {
+        "enabled": "auto",
+        "url": "",
+        "api_key": "",
+        "config": "/etc/powerdns/recursor.yml",
+        "control": "rec_control",
+        "timeout": "10",
+    },
+}
+
+
+# --------------------------------------------------------------------------
+# configuration
+# --------------------------------------------------------------------------
+def read_config():
+    parser = configparser.ConfigParser()
+    for section, values in DEFAULTS.items():
+        parser.add_section(section)
+        for key, value in values.items():
+            parser.set(section, key, value)
+    if os.path.exists(CFG_FILE):
+        try:
+            parser.read(CFG_FILE)
+        except configparser.Error as exc:
+            sys.stderr.write("powerdns: cannot parse %s: %s\n" % (CFG_FILE, exc))
+    return parser
+
+
+def parse_oldstyle_config(path):
+    """Parse a PowerDNS old-style ``key=value`` configuration file."""
+    settings = {}
+    for candidate in _config_files(path):
+        try:
+            with open(candidate, encoding="utf-8", errors="replace") as handle:
+                for line in handle:
+                    line = line.split("#", 1)[0].strip()
+                    if not line or "=" not in line:
+                        continue
+                    key, value = line.split("=", 1)
+                    settings[key.strip()] = value.strip()
+        except OSError:
+            continue
+    return settings
+
+
+def _config_files(path):
+    """The main config file plus any ``*.conf`` in the matching ``.d`` directory."""
+    files = [path]
+    include_dir = os.path.splitext(path)[0] + ".d"
+    if os.path.isdir(include_dir):
+        files.extend(
+            os.path.join(include_dir, name)
+            for name in sorted(os.listdir(include_dir))
+            if name.endswith(".conf")
+        )
+    return files
+
+
+def parse_yaml_webservice(path):
+    """Extract the ``webservice`` block from a Recursor YAML config.
+
+    Uses PyYAML when available (present on stock Ubuntu via python3-yaml) and
+    falls back to a deliberately small indentation scanner otherwise -- we only
+    ever need four scalar keys.
+    """
+    if not os.path.exists(path):
+        return {}
+    try:
+        with open(path, encoding="utf-8", errors="replace") as handle:
+            text = handle.read()
+    except OSError:
+        return {}
+
+    try:
+        import yaml  # type: ignore
+
+        loaded = yaml.safe_load(text) or {}
+        block = loaded.get("webservice") or {}
+        if isinstance(block, dict):
+            return {str(k): v for k, v in block.items()}
+        return {}
+    except Exception:  # noqa: BLE001 - missing module or malformed YAML
+        pass
+
+    block = {}
+    inside = False
+    for raw in text.splitlines():
+        if re.match(r"^webservice\s*:", raw):
+            inside = True
+            continue
+        if inside:
+            if raw.strip() and not raw[:1].isspace():
+                break  # next top level key
+            match = re.match(r"^\s+([A-Za-z0-9_]+)\s*:\s*(.*?)\s*$", raw.split("#", 1)[0])
+            if match:
+                value = match.group(2).strip("\"'")
+                if value:
+                    block[match.group(1)] = value
+    return block
+
+
+def _as_bool(value, default=False):
+    if value is None:
+        return default
+    if isinstance(value, bool):
+        return value
+    return str(value).strip().lower() in ("1", "yes", "true", "on")
+
+
+def auth_endpoint(cfg):
+    """Return (url, api_key) for the authoritative server."""
+    url = cfg.get("auth", "url").strip().rstrip("/")
+    key = cfg.get("auth", "api_key").strip()
+    if url and key:
+        return url, key
+
+    settings = parse_oldstyle_config(cfg.get("auth", "config"))
+    if not key:
+        key = settings.get("api-key", "")
+    if not url:
+        if not _as_bool(settings.get("webserver")) or not _as_bool(settings.get("api")):
+            return "", key
+        address = settings.get("webserver-address", "127.0.0.1").split()[0]
+        port = settings.get("webserver-port", "8081")
+        url = _build_url(address, port)
+    return url, key
+
+
+def recursor_endpoint(cfg):
+    """Return (url, api_key) for the recursor, handling YAML and old-style config."""
+    url = cfg.get("recursor", "url").strip().rstrip("/")
+    key = cfg.get("recursor", "api_key").strip()
+    if url and key:
+        return url, key
+
+    path = cfg.get("recursor", "config")
+    block = parse_yaml_webservice(path)
+    if not block and path.endswith((".yml", ".yaml")):
+        # Recursor <= 5.1 style, or an operator who kept recursor.conf around.
+        legacy = parse_oldstyle_config(re.sub(r"\.ya?ml$", ".conf", path))
+        block = {
+            "webserver": legacy.get("webserver"),
+            "address": legacy.get("webserver-address"),
+            "port": legacy.get("webserver-port"),
+            "api_key": legacy.get("api-key"),
+        }
+
+    if not key:
+        key = str(block.get("api_key") or "")
+    if not url:
+        if not _as_bool(block.get("webserver")):
+            return "", key
+        listen = block.get("listen")
+        if listen:
+            first = listen[0] if isinstance(listen, list) else listen
+            if isinstance(first, dict):
+                first = first.get("address") or first.get("addresses") or ""
+            url = _build_url_from_listen(str(first))
+        else:
+            address = str(block.get("address") or "127.0.0.1").split()[0]
+            port = str(block.get("port") or "8082")
+            url = _build_url(address, port)
+    return url, key
+
+
+def _build_url(address, port):
+    address = address.strip().strip("[]")
+    if address in ("0.0.0.0", "::", ""):
+        address = "127.0.0.1"
+    host = "[%s]" % address if ":" in address else address
+    return "http://%s:%s" % (host, str(port).strip())
+
+
+def _build_url_from_listen(entry):
+    entry = entry.strip()
+    match = re.match(r"^\[(?P<addr>[^\]]+)\](?::(?P<port>\d+))?$", entry)
+    if match:
+        return _build_url(match.group("addr"), match.group("port") or "8082")
+    if entry.count(":") == 1:
+        address, _, port = entry.partition(":")
+        return _build_url(address, port or "8082")
+    return _build_url(entry, "8082")
+
+
+# --------------------------------------------------------------------------
+# HTTP helper
+# --------------------------------------------------------------------------
+class ApiError(Exception):
+    pass
+
+
+def api_get(url, api_key, path, timeout, params=None):
+    target = "%s/api/v1%s" % (url, path)
+    if params:
+        target += "?" + "&".join("%s=%s" % (k, v) for k, v in params.items())
+    request = urllib.request.Request(target, headers={"X-API-Key": api_key})
+    try:
+        with urllib.request.urlopen(request, timeout=timeout) as response:  # nosec B310
+            return json.loads(response.read().decode("utf-8"))
+    except urllib.error.HTTPError as exc:
+        raise ApiError("HTTP %s for %s" % (exc.code, path)) from exc
+    except urllib.error.URLError as exc:
+        raise ApiError("%s for %s" % (exc.reason, path)) from exc
+    except (ValueError, OSError) as exc:
+        raise ApiError("%s for %s" % (exc, path)) from exc
+
+
+def statistics_to_dict(payload):
+    """Flatten the /statistics array into ``{name: number}``.
+
+    Map and ring statistics are skipped -- they are unbounded in size and carry
+    no monitoring value.
+    """
+    stats = {}
+    if not isinstance(payload, list):
+        return stats
+    for item in payload:
+        if not isinstance(item, dict) or item.get("type") != "StatisticItem":
+            continue
+        name, value = item.get("name"), item.get("value")
+        if name is None:
+            continue
+        try:
+            stats[str(name)] = float(value)
+        except (TypeError, ValueError):
+            continue
+    return stats
+
+
+# --------------------------------------------------------------------------
+# control socket fallback
+# --------------------------------------------------------------------------
+def run_control(command, args, timeout):
+    try:
+        result = subprocess.run(  # noqa: S603
+            [command] + args,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            timeout=timeout,
+            check=False,
+        )
+    except (OSError, subprocess.SubprocessError) as exc:
+        raise ApiError("%s %s: %s" % (command, " ".join(args), exc)) from exc
+    if result.returncode != 0:
+        raise ApiError(
+            "%s %s exited %d: %s"
+            % (command, " ".join(args), result.returncode, result.stderr.decode(errors="replace").strip())
+        )
+    return result.stdout.decode(errors="replace")
+
+
+def parse_control_stats(text):
+    """Parse ``pdns_control show *`` and ``rec_control get-all`` output.
+
+    Auth returns ``a=1,b=2,`` on one line, the recursor returns ``name\\tvalue``
+    per line.  Both shapes are handled by the same tokenizer.
+    """
+    stats = {}
+    for token in re.split(r"[,\n]", text):
+        token = token.strip()
+        if not token:
+            continue
+        if "=" in token:
+            name, _, value = token.partition("=")
+        else:
+            parts = token.split()
+            if len(parts) != 2:
+                continue
+            name, value = parts
+        try:
+            stats[name.strip()] = float(value.strip())
+        except ValueError:
+            continue
+    return stats
+
+
+# --------------------------------------------------------------------------
+# collectors
+# --------------------------------------------------------------------------
+def collect_daemon(cfg, section, endpoint_func):
+    """Collect statistics for one daemon. Returns the section payload dict."""
+    started = time.time()
+    result = {
+        "plugin_version": PLUGIN_VERSION,
+        "reachable": False,
+        "source": None,
+        "version": None,
+        "stats": {},
+        "errors": [],
+    }
+
+    mode = cfg.get(section, "enabled").strip().lower()
+    if mode in ("no", "0", "false", "off"):
+        return None
+
+    timeout = cfg.getfloat(section, "timeout")
+    url, api_key = endpoint_func(cfg)
+
+    if url and api_key:
+        result["url"] = url
+        try:
+            server = api_get(url, api_key, "/servers/localhost", timeout)
+            if isinstance(server, dict):
+                result["version"] = server.get("version")
+            result["stats"] = statistics_to_dict(
+                api_get(url, api_key, "/servers/localhost/statistics", timeout)
+            )
+            result["reachable"] = True
+            result["source"] = "api"
+        except ApiError as exc:
+            result["errors"].append(str(exc))
+    elif url and not api_key:
+        result["errors"].append("webserver found but no API key configured")
+
+    if not result["reachable"]:
+        control = cfg.get(section, "control").strip()
+        args = ["show", "*"] if section == "auth" else ["get-all"]
+        try:
+            result["stats"] = parse_control_stats(run_control(control, args, timeout))
+            result["reachable"] = bool(result["stats"])
+            result["source"] = "control"
+            try:
+                result["version"] = run_control(control, ["version"], timeout).strip() or None
+            except ApiError:
+                pass
+        except ApiError as exc:
+            result["errors"].append(str(exc))
+
+    if mode == "auto" and not result["reachable"] and not result["stats"]:
+        # Daemon is not installed / not running on this host at all.  Only
+        # suppress the section when we also found no configuration for it.
+        if not url and not os.path.exists(cfg.get(section, "config")):
+            return None
+
+    result["fetch_seconds"] = round(time.time() - started, 3)
+    return result
+
+
+def load_state():
+    try:
+        with open(STATE_FILE, encoding="utf-8") as handle:
+            state = json.load(handle)
+    except (OSError, ValueError):
+        return {"updated": 0.0, "records": {}, "rrsets": {}}
+    state.setdefault("updated", 0.0)
+    state.setdefault("records", {})
+    state.setdefault("rrsets", {})
+    return state
+
+
+def save_state(state):
+    try:
+        os.makedirs(VAR_DIR, exist_ok=True)
+        tmp = STATE_FILE + ".tmp"
+        with open(tmp, "w", encoding="utf-8") as handle:
+            json.dump(state, handle)
+        os.replace(tmp, STATE_FILE)
+    except OSError as exc:
+        sys.stderr.write("powerdns: cannot write %s: %s\n" % (STATE_FILE, exc))
+
+
+def count_records(url, api_key, zone_id, mode, timeout):
+    """Return (records, rrsets) for one zone.
+
+    ``count_param`` asks the server for a count without serialising the zone
+    (cheap).  Because a live zone always holds at least SOA and NS records, a
+    reported count of zero means the server did not honour the parameter, and we
+    fall back to a full fetch.
+    """
+    quoted = urllib.request.quote(zone_id, safe="")
+    if mode in ("auto", "count_param"):
+        payload = api_get(
+            url,
+            api_key,
+            "/servers/localhost/zones/%s" % quoted,
+            timeout,
+            {"rrsets": "false", "record_count": "true"},
+        )
+        count = payload.get("record_count") if isinstance(payload, dict) else None
+        if isinstance(count, (int, float)) and count > 0:
+            return int(count), None
+        if mode == "count_param":
+            return (int(count) if isinstance(count, (int, float)) else None), None
+
+    payload = api_get(url, api_key, "/servers/localhost/zones/%s" % quoted, timeout)
+    rrsets = payload.get("rrsets") if isinstance(payload, dict) else None
+    if not isinstance(rrsets, list):
+        return None, None
+    return sum(len(rrset.get("records") or []) for rrset in rrsets), len(rrsets)
+
+
+def collect_zones(cfg):
+    if not cfg.getboolean("auth", "zones"):
+        return None
+
+    started = time.time()
+    timeout = cfg.getfloat("auth", "timeout")
+    url, api_key = auth_endpoint(cfg)
+    result = {
+        "plugin_version": PLUGIN_VERSION,
+        "reachable": False,
+        "zones": [],
+        "truncated": False,
+        "errors": [],
+    }
+
+    if not (url and api_key):
+        if not os.path.exists(cfg.get("auth", "config")):
+            return None
+        result["errors"].append("zone inventory needs the HTTP API (api=yes plus api-key)")
+        result["fetch_seconds"] = round(time.time() - started, 3)
+        return result
+
+    try:
+        listing = api_get(url, api_key, "/servers/localhost/zones", timeout)
+    except ApiError as exc:
+        result["errors"].append(str(exc))
+        result["fetch_seconds"] = round(time.time() - started, 3)
+        return result
+
+    if not isinstance(listing, list):
+        result["errors"].append("unexpected zone listing payload")
+        return result
+
+    result["reachable"] = True
+    max_zones = cfg.getint("auth", "max_zones")
+    if len(listing) > max_zones:
+        result["truncated"] = True
+        result["total_zones"] = len(listing)
+        listing = listing[:max_zones]
+
+    mode = cfg.get("auth", "records").strip().lower()
+    state = load_state()
+    now = time.time()
+    refresh = now - state["updated"] >= cfg.getfloat("auth", "zone_refresh")
+    budget_end = now + cfg.getfloat("auth", "zone_budget")
+    counted = 0
+
+    for zone in listing:
+        if not isinstance(zone, dict):
+            continue
+        zone_id = str(zone.get("id") or zone.get("name") or "")
+        entry = {
+            "id": zone_id,
+            "name": str(zone.get("name") or zone_id),
+            "kind": str(zone.get("kind") or "Unknown"),
+            "serial": zone.get("serial"),
+            "notified_serial": zone.get("notified_serial"),
+            "edited_serial": zone.get("edited_serial"),
+            "dnssec": bool(zone.get("dnssec")),
+            "last_check": zone.get("last_check"),
+            "primaries": len(zone.get("masters") or []),
+            "catalog": zone.get("catalog") or "",
+            "account": zone.get("account") or "",
+            "records": state["records"].get(zone_id),
+            "rrsets": state["rrsets"].get(zone_id),
+        }
+
+        if mode != "none" and refresh and time.time() < budget_end:
+            try:
+                records, rrsets = count_records(url, api_key, zone_id, mode, timeout)
+            except ApiError as exc:
+                if len(result["errors"]) < 5:
+                    result["errors"].append(str(exc))
+            else:
+                if records is not None:
+                    entry["records"] = records
+                    state["records"][zone_id] = records
+                    counted += 1
+                if rrsets is not None:
+                    entry["rrsets"] = rrsets
+                    state["rrsets"][zone_id] = rrsets
+
+        result["zones"].append(entry)
+
+    if refresh and counted:
+        live = {zone["id"] for zone in result["zones"]}
+        state["records"] = {k: v for k, v in state["records"].items() if k in live}
+        state["rrsets"] = {k: v for k, v in state["rrsets"].items() if k in live}
+        state["updated"] = now
+        save_state(state)
+
+    result["records_age"] = round(max(0.0, time.time() - state["updated"]), 1)
+    result["records_mode"] = mode
+    result["fetch_seconds"] = round(time.time() - started, 3)
+    return result
+
+
+# --------------------------------------------------------------------------
+def emit(name, payload):
+    if payload is None:
+        return
+    sys.stdout.write("<<<%s:sep(0)>>>\n" % name)
+    sys.stdout.write(json.dumps(payload, sort_keys=True) + "\n")
+
+
+def main():
+    cfg = read_config()
+
+    for name, collector in (
+        ("powerdns_auth", lambda: collect_daemon(cfg, "auth", auth_endpoint)),
+        ("powerdns_auth_zones", lambda: collect_zones(cfg)),
+        ("powerdns_recursor", lambda: collect_daemon(cfg, "recursor", recursor_endpoint)),
+    ):
+        try:
+            emit(name, collector())
+        except Exception as exc:  # noqa: BLE001 - never break the agent
+            emit(
+                name,
+                {
+                    "plugin_version": PLUGIN_VERSION,
+                    "reachable": False,
+                    "stats": {},
+                    "zones": [],
+                    "errors": ["plugin error: %s" % exc],
+                },
+            )
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

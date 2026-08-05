@@ -1,0 +1,28 @@
+title: PowerDNS Authoritative Server: Status
+agents: linux
+catalog: app/powerdns
+license: GPLv2
+author: Christian Wirtz
+distribution: powerdns-mkp
+description:
+ Reports the overall health of the PowerDNS Authoritative Server: the running
+ version, the process uptime, the number of questions queued for the backend,
+ resident memory usage, open file descriptors and open TCP connections.
+
+ The check also evaluates {security-status}, which PowerDNS derives from its
+ security polling against secpoll.powerdns.com. By default the service goes
+ {WARN} when an upgrade is recommended and {CRIT} when an upgrade is mandatory
+ because the running version is affected by a published security issue. Both
+ states are configurable, as is the state used while no poll result exists yet.
+
+ The service becomes {CRIT} when the agent plugin could not reach the daemon at
+ all. The error reported by the collector is included in the service output, so
+ a missing API key looks different from a daemon that is down.
+
+ If the HTTP API is unavailable the plugin falls back to the control socket.
+ That is noted in the service details, because the fallback provides statistics
+ but no zone information.
+
+discovery:
+ One service is created on every host where the agent plugin reports the
+ {powerdns_auth} section.

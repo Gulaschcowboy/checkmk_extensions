@@ -1,0 +1,26 @@
+title: PowerDNS Recursor: Status
+agents: linux
+catalog: app/powerdns
+license: GPLv2
+author: Christian Wirtz
+distribution: powerdns-mkp
+description:
+ Reports the overall health of the PowerDNS Recursor: version, uptime, queries
+ currently in flight, connected TCP clients, open file descriptors and resident
+ memory usage.
+
+ The number of concurrent queries is also expressed as a percentage of
+ {max-mthreads}, with levels at 70 and 90 percent. That ratio is the useful
+ early warning: once it reaches 100 percent the recursor starts dropping queries
+ and counting them as {over-capacity-drops}.
+
+ As for the authoritative server, {security-status} from the PowerDNS security
+ polling is mapped to a monitoring state, {WARN} for a recommended upgrade and
+ {CRIT} for a mandatory one by default.
+
+ The service becomes {CRIT} when the agent plugin could not reach the daemon,
+ and the collector error is included in the output.
+
+discovery:
+ One service is created on every host where the agent plugin reports the
+ {powerdns_recursor} section.

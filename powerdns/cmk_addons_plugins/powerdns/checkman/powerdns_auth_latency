@@ -1,0 +1,17 @@
+title: PowerDNS Authoritative Server: Latency
+agents: linux
+catalog: app/powerdns
+license: GPLv2
+author: Christian Wirtz
+distribution: powerdns-mkp
+description:
+ Reports the average answer latency of the authoritative server. PowerDNS
+ exposes this as {latency} in microseconds; the check converts it to seconds so
+ that it renders and graphs like every other duration in Checkmk.
+
+ Defaults are {WARN} at 50 ms and {CRIT} at 200 ms. On a server with a local
+ database backend and a warm packet cache the value is normally far below that,
+ so the defaults mainly catch a struggling backend.
+
+discovery:
+ One service is created when the {latency} counter is present.

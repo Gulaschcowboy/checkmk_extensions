@@ -1,0 +1,21 @@
+title: PowerDNS Recursor: DNSSEC validation
+agents: linux
+catalog: app/powerdns
+license: GPLv2
+author: Christian Wirtz
+distribution: powerdns-mkp
+description:
+ Monitors DNSSEC validation on the recursor: the total validation rate and the
+ breakdown of results into secure, insecure, bogus, indeterminate and negative
+ trust anchor.
+
+ The share of validations that end up bogus is evaluated with levels at 1 and 5
+ percent. A rising bogus share usually means some remote zone botched a key
+ rollover, but a sustained high value can also indicate a middlebox on the path
+ mangling DNSSEC responses, which is worth knowing about.
+
+ The service is only discovered when the recursor actually performs validation,
+ that is when the {dnssec-validations} counter exists.
+
+discovery:
+ One service is created when the {dnssec-validations} counter is present.

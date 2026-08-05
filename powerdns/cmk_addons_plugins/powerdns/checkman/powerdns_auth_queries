@@ -1,0 +1,24 @@
+title: PowerDNS Authoritative Server: Query rates
+agents: linux
+catalog: app/powerdns
+license: GPLv2
+author: Christian Wirtz
+distribution: powerdns-mkp
+description:
+ Turns the PowerDNS query counters into rates: UDP and TCP queries and answers,
+ queries with the recursion-desired bit set, DNS UPDATE queries and the number
+ of DNSSEC signatures created.
+
+ Problem counters are evaluated separately: SERVFAIL packets, corrupt packets,
+ packets that timed out waiting for the backend, and queries dropped because the
+ backend was overloaded. In addition to the absolute SERVFAIL rate the check
+ computes the share of all queries answered with SERVFAIL, which stays
+ meaningful across load changes.
+
+ All rates are derived from the counter difference between two checks. The first
+ check after discovery has no reference value and reports {Initializing
+ counters}. A restart of the daemon resets the counters; the affected cycle is
+ skipped rather than reported as a negative rate.
+
+discovery:
+ One service is created when the {udp-queries} counter is present.

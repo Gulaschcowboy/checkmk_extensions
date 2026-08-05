@@ -1,0 +1,80 @@
+# /etc/check_mk/powerdns.cfg
+#
+# Configuration for the "powerdns" Checkmk agent plugin.
+#
+# This file is OPTIONAL. Without it the plugin reads the PowerDNS configuration
+# itself and figures out the webserver address and the API key. Use this file
+# when auto-detection cannot work: a non-standard config path, an API reachable
+# only over a different address, or a dedicated read-only API key.
+#
+# The plugin runs as root, so it can read the API key out of pdns.conf. Keep the
+# permissions of this file tight as well:
+#     chown root:root /etc/check_mk/powerdns.cfg && chmod 600 /etc/check_mk/powerdns.cfg
+
+[auth]
+# auto = collect if the daemon looks present, yes = always, no = never
+enabled = auto
+
+# Leave empty to derive from webserver-address / webserver-port in pdns.conf.
+# url = http://127.0.0.1:8081
+
+# Leave empty to read api-key from pdns.conf.
+# api_key =
+
+# Where to look for the authoritative server configuration. Files in the
+# matching .d directory (here /etc/powerdns/pdns.d/*.conf) are read as well.
+config = /etc/powerdns/pdns.conf
+
+# Fallback when the HTTP API is not usable. Provides statistics but no zones.
+control = pdns_control
+
+# HTTP and control socket timeout in seconds.
+timeout = 10
+
+# ---------------------------------------------------------------------------
+# Zone inventory and record counting
+# ---------------------------------------------------------------------------
+# Collect the zone list at all. Requires the HTTP API (api=yes plus api-key).
+zones = yes
+
+# How often to recount records, in seconds. The zone list itself (serials,
+# notify state, last_check) is refreshed on every agent run; only the record
+# counts use this slower interval, because counting is the expensive part.
+# Counts in between are served from
+# /var/lib/check_mk_agent/powerdns_zone_records.json.
+zone_refresh = 900
+
+# How to count records:
+#   auto        ask the API for a count without transferring the zone, and fall
+#               back to a full zone fetch if the server does not honour it
+#   count_param only use the cheap count, report nothing if unsupported
+#   full        always fetch all RRsets and count (also yields the RRset count)
+#   none        do not count records at all
+records = auto
+
+# Safety valve for very large installations: stop after this many zones. The
+# summary service reports that the list was truncated.
+max_zones = 2000
+
+# Give up counting after this many seconds within one run and keep the previous
+# values for the remaining zones. Prevents a slow backend from stalling the
+# whole agent.
+zone_budget = 60
+
+[recursor]
+enabled = auto
+
+# Leave empty to derive from the webservice section of recursor.yml.
+# url = http://127.0.0.1:8082
+
+# Leave empty to read webservice.api_key from recursor.yml.
+# api_key =
+
+# Recursor 5.2 and newer no longer parse old-style settings by default, so this
+# is a YAML file. If you still run recursor.conf, either point this at it or
+# leave it as-is: the plugin looks for recursor.conf next to the .yml as a
+# fallback.
+config = /etc/powerdns/recursor.yml
+
+control = rec_control
+timeout = 10

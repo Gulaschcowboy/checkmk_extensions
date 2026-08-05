@@ -11,6 +11,7 @@ README with install and build instructions.
 |------------|--------------------------------------------------------------------|
 | [`opnsense`](opnsense/) | OPNsense firewall monitoring via the REST API — firmware/update status, per-service, system/uptime/load, memory/swap, per-filesystem. |
 | [`proxmox_backup_server_api`](proxmox_backup_server_api/) | Proxmox Backup Server monitoring via the REST API — node CPU/load/memory/uptime/root FS, subscription, per-datastore usage with estimated-full projection, garbage collection, and configured prune/verify/sync/tape jobs. |
+| [`powerdns`](powerdns/) | PowerDNS Authoritative Server and Recursor monitoring via their built-in HTTP APIs (control-socket fallback) — status/security-status, query & error rates, packet/query/record cache efficiency, answer latency, per-zone record counts & serials, and recursor DNSSEC validation. Ships an agent plugin + CEE agent-bakery rule. |
 
 ## Installing a package
 

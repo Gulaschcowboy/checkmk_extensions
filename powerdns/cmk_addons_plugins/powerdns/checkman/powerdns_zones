@@ -1,0 +1,29 @@
+title: PowerDNS Authoritative Server: Zone summary
+agents: linux
+catalog: app/powerdns
+license: GPLv2
+author: Christian Wirtz
+distribution: powerdns-mkp
+description:
+ Summarises the zone inventory of the authoritative server: the total number of
+ zones, the split by kind (Native, Master, Slave, Producer, Consumer), how many
+ zones are DNSSEC signed, and the total number of records across all zones.
+
+ Zones without any records are counted and listed; that state is {WARN} by
+ default, since an empty zone is almost always a mistake rather than a choice.
+
+ Upper and lower levels can be set on both the zone count and the total record
+ count. The lower levels are the useful ones: they catch a backend that came
+ back up with an empty or partially restored database.
+
+ Record counts are collected on their own, slower interval because counting is
+ the expensive part of the collection. The age of those numbers is monitored
+ here, so a stalled refresh does not silently freeze the graphs.
+
+ This service is {CRIT} when the zone inventory could not be retrieved. Zone
+ data requires the HTTP API; the control socket fallback cannot provide it.
+
+discovery:
+ One service is created on every host where the agent plugin reports the
+ {powerdns_auth_zones} section. This service is always created and is not
+ affected by the zone discovery ruleset.
