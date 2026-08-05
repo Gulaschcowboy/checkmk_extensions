@@ -1,0 +1,28 @@
+title: Mail domain health: DNSBL/RBL listings
+agents: mail_domain_health
+catalog: app/mail_domain_health
+license: GPLv2
+distribution:
+description:
+ This check queries a configurable set of DNS blacklists (DNSBLs) for the IP
+ addresses of a mail server, collected by the {mail_domain_health} special agent.
+ The target may be a host name (whose current A/AAAA addresses are all checked,
+ keeping the service item stable across IP changes) or an IP literal.
+
+ The number of listings is measured against configurable levels (default {WARN}
+ at one, {CRIT} at two). Each IP is annotated with its reverse DNS (PTR) name,
+ and every queried list is shown individually in the service details. Queries
+ that are refused or blocked by a list operator (for example Spamhaus when
+ queried through a public resolver) are distinguished from genuine "not listed"
+ answers. Optionally a forward-confirmed reverse DNS (FCrDNS) check is reported
+ per IP.
+
+ All thresholds and states are configurable via the rule "Mail security:
+ DNSBL/RBL listings".
+
+item:
+ The configured host name or IP address.
+
+discovery:
+ One service is created for each configured target and, when enabled, for the
+ resolved MX hosts of each domain.

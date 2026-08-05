@@ -1,0 +1,38 @@
+{'author': 'Christian Wirtz',
+ 'description': 'Mail-domain posture monitoring plus an overview dashboard. Every '
+                'check is independently switchable: SPF and DMARC (on by default), '
+                'DKIM (global + per-domain selectors), DNSBL/RBL, domain-based '
+                'blacklists, MTA-STS + TLS-RPT, DANE/TLSA, BIMI and RDAP '
+                'registration-expiry. The DNSBL/RBL options (hosts/IPs, MX resolution, '
+                'zones) are grouped under one section. No blacklist zones are shipped '
+                'by default - you configure which lists to query (the field help lists '
+                'copyable suggestions and explains the declining value of public '
+                'DNSBLs). Ships Perf-O-Meters, check manuals and a free-dashlet '
+                "overview dashboard. DNSSEC is the separate 'dnssec_health' plugin. "
+                'Rules from earlier versions are migrated automatically. Special agent '
+                'using DNS (plus HTTPS/SMTP for some optional features) - no agent '
+                'deployment, pure Python stdlib. Configure via Setup > Agents > Other '
+                'integrations > Mail domain health.',
+ 'download_url': 'https://github.com/Gulaschcowboy/checkmk_extensions',
+ 'files': {'cmk_addons_plugins': ['mail_domain_health/agent_based/mail_domain_health.py',
+                                  'mail_domain_health/graphing/mail_domain_health.py',
+                                  'mail_domain_health/libexec/agent_mail_domain_health',
+                                  'mail_domain_health/rulesets/special_agent_mail_domain_health.py',
+                                  'mail_domain_health/rulesets/check_parameters_mail_domain_health.py',
+                                  'mail_domain_health/server_side_calls/mail_domain_health.py',
+                                  'mail_domain_health/checkman/mail_domain_health_bimi',
+                                  'mail_domain_health/checkman/mail_domain_health_dane',
+                                  'mail_domain_health/checkman/mail_domain_health_dkim',
+                                  'mail_domain_health/checkman/mail_domain_health_dmarc',
+                                  'mail_domain_health/checkman/mail_domain_health_domain_bl',
+                                  'mail_domain_health/checkman/mail_domain_health_mta_sts',
+                                  'mail_domain_health/checkman/mail_domain_health_rbl',
+                                  'mail_domain_health/checkman/mail_domain_health_rdap',
+                                  'mail_domain_health/checkman/mail_domain_health_spf'],
+           'gui': ['dashboard/mail_domain_health.mk']},
+ 'name': 'mail_domain_health',
+ 'title': 'Mail domain health (plugin + dashboard)',
+ 'version': '1.4.0',
+ 'version.min_required': '2.5.0',
+ 'version.packaged': '2.5.0',
+ 'version.usable_until': None}

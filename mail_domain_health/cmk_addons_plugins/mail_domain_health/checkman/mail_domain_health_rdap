@@ -1,0 +1,23 @@
+title: Mail domain health: domain registration expiry
+agents: mail_domain_health
+catalog: app/mail_domain_health
+license: GPLv2
+distribution:
+description:
+ This check reports the registration expiry date of a domain, obtained via RDAP
+ by the {mail_domain_health} special agent. The number of days until expiry is
+ measured against configurable lower levels (default {WARN} at 30 days, {CRIT}
+ at 14 days) and recorded as a metric. The registrar is shown when available.
+
+ Querying RDAP requires outbound HTTPS from the Checkmk server. Not all
+ top-level domains expose an expiry date via RDAP; in that case the service
+ reports {UNKNOWN}.
+
+ Levels are configurable via the rule "Mail security: domain registration
+ expiry".
+
+item:
+ The domain name.
+
+discovery:
+ One service is created for each configured domain when the feature is enabled.

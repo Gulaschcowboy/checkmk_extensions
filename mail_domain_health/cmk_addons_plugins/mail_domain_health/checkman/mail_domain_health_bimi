@@ -1,0 +1,20 @@
+title: Mail domain health: BIMI record
+agents: mail_domain_health
+catalog: app/mail_domain_health
+license: GPLv2
+distribution:
+description:
+ This check evaluates the BIMI record at {<selector>._bimi.<domain>}, collected
+ by the {mail_domain_health} special agent via DNS. It verifies that the record
+ exists and contains a logo URL ({l=}), and can require a VMC certificate URL
+ ({a=}). Optionally the logo and VMC URLs are fetched over HTTPS to confirm they
+ are reachable and that the logo is an SVG. Note that BIMI is only honoured by
+ mailbox providers when the domain enforces DMARC.
+
+ All states are configurable via the rule "Mail security: BIMI record".
+
+item:
+ The domain name.
+
+discovery:
+ One service is created for each configured domain when the feature is enabled.

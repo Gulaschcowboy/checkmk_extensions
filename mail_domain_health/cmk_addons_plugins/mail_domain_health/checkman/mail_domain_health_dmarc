@@ -1,0 +1,23 @@
+title: Mail domain health: DMARC record
+agents: mail_domain_health
+catalog: app/mail_domain_health
+license: GPLv2
+distribution:
+description:
+ This check evaluates the DMARC record published at {_dmarc.<domain>},
+ collected by the {mail_domain_health} special agent via DNS.
+
+ It reports {CRIT} if no DMARC record is published or if more than one record
+ exists. The published policy ({p=}) is compared against a configurable minimum
+ (default {quarantine}); a weaker subdomain policy ({sp=}) and a {pct=} value
+ below 100 are reported as well. A missing aggregate report address ({rua=})
+ can optionally be alerted on.
+
+ All thresholds and states are configurable via the rule "Mail security: DMARC
+ record".
+
+item:
+ The domain name.
+
+discovery:
+ One service is created for each configured domain.

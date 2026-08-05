@@ -1,0 +1,27 @@
+title: Mail domain health: SPF record
+agents: mail_domain_health
+catalog: app/mail_domain_health
+license: GPLv2
+distribution:
+description:
+ This check evaluates the SPF (Sender Policy Framework) TXT record of a domain,
+ collected by the {mail_domain_health} special agent via DNS.
+
+ It reports {CRIT} if no SPF record is published, or if more than one {v=spf1}
+ record exists (an RFC 7208 violation that makes SPF evaluate to permerror). It
+ checks that the record terminates with an acceptable {all} qualifier (by
+ default {~all} or {-all}) and counts the DNS lookups the record causes,
+ including recursive expansion of {include:} and {redirect=} terms, warning as
+ the RFC 7208 limit of ten lookups is approached. Unknown mechanisms, missing
+ include targets and include loops are reported. Optionally the record can be
+ compared verbatim against an expected string to detect unauthorised DNS
+ changes.
+
+ All thresholds and states are configurable via the rule "Mail security: SPF
+ record".
+
+item:
+ The domain name.
+
+discovery:
+ One service is created for each configured domain.

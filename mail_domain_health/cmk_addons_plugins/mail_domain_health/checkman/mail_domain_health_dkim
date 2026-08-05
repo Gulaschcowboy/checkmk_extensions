@@ -1,0 +1,27 @@
+title: Mail domain health: DKIM records
+agents: mail_domain_health
+catalog: app/mail_domain_health
+license: GPLv2
+distribution:
+description:
+ This check evaluates DKIM public-key records at
+ {<selector>._domainkey.<domain>} for a configurable set of selectors,
+ collected by the {mail_domain_health} special agent via DNS. Selectors cannot be
+ discovered from DNS and must be configured; both global selectors (applied to
+ every domain) and per-domain selectors are supported.
+
+ For each present selector the record syntax is validated, the RSA key size is
+ checked against a configurable minimum (default 2048 bit), Ed25519 keys are
+ accepted, and revoked keys (empty {p=}) and test-mode selectors ({t=y}) are
+ reported. Optionally the check alerts when none of the configured selectors
+ exist for a domain.
+
+ All thresholds and states are configurable via the rule "Mail security: DKIM
+ records".
+
+item:
+ The domain name.
+
+discovery:
+ One service is created for each configured domain when at least one selector
+ is configured.

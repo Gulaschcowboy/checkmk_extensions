@@ -1,0 +1,1241 @@
+#!/usr/bin/env python3
+# Copyright (C) 2026 - License: GNU General Public License v2
+"""Special agent 'mail_domain_health'.
+
+Collects mail-related DNS security data:
+  - SPF TXT records per domain, incl. recursive DNS lookup count (RFC 7208 10-lookup limit)
+  - DMARC records per domain (_dmarc.<domain> TXT)
+  - DNSBL (RBL) listings per IP address (IPv4 + IPv6)
+  - optionally resolves the MX hosts of each domain and includes their IPs
+    in the RBL checks
+
+Optional features (each enabled independently):
+  - DKIM public-key records for configured selectors (<selector>._domainkey.<domain>)
+  - Domain-based blacklists (DBL/SURBL/URIBL) per domain
+  - Forward-confirmed reverse DNS (FCrDNS) for the checked mail server IPs
+  - MTA-STS policy (TXT + HTTPS policy file) and TLS-RPT record per domain
+  (DNSSEC has moved to the separate dnssec_health plugin)
+
+The agent only *gathers* data.  All evaluation (thresholds, expected
+policies, ...) happens in the check plugins, configurable via rulesets.
+
+Implemented with the Python standard library only - no dnspython required.
+"""
+
+from __future__ import annotations
+
+import argparse
+import base64
+import ipaddress
+import json
+import random
+import re
+import socket
+import ssl
+import struct
+import sys
+import urllib.error
+import urllib.request
+from concurrent.futures import ThreadPoolExecutor
+from dataclasses import dataclass, field
+
+# ---------------------------------------------------------------------------
+# Minimal DNS client (UDP with TCP fallback on truncation)
+# ---------------------------------------------------------------------------
+
+TYPE_A = 1
+TYPE_PTR = 12
+TYPE_TXT = 16
+TYPE_MX = 15
+TYPE_AAAA = 28
+TYPE_SOA = 6
+TYPE_DNSKEY = 48
+TYPE_TLSA = 52
+
+RCODE_NOERROR = 0
+RCODE_NXDOMAIN = 3
+
+_RCODE_NAMES = {
+    0: "NOERROR",
+    1: "FORMERR",
+    2: "SERVFAIL",
+    3: "NXDOMAIN",
+    4: "NOTIMP",
+    5: "REFUSED",
+}
+
+
+class DnsError(Exception):
+    """Transport level DNS error (timeout, network trouble, malformed reply)."""
+
+
+@dataclass(frozen=True)
+class DnsAnswer:
+    rtype: int
+    data: object  # str for A/AAAA/TXT, tuple[int, str] for MX
+
+
+@dataclass(frozen=True)
+class DnsResponse:
+    rcode: int
+    answers: tuple[DnsAnswer, ...]
+    authenticated: bool = False  # AD bit (DNSSEC-validated by the resolver)
+    answer_count: int = 0  # raw ANCOUNT, incl. record types we don't decode
+
+    @property
+    def rcode_name(self) -> str:
+        return _RCODE_NAMES.get(self.rcode, f"RCODE{self.rcode}")
+
+
+def encode_name(name: str) -> bytes:
+    out = b""
+    for label in name.rstrip(".").split("."):
+        raw = label.encode("idna") if any(ord(c) > 127 for c in label) else label.encode("ascii")
+        if not 0 < len(raw) < 64:
+            raise DnsError(f"invalid label in {name!r}")
+        out += bytes([len(raw)]) + raw
+    return out + b"\x00"
+
+
+def build_query(name: str, rtype: int, txid: int, want_dnssec: bool = False) -> bytes:
+    # RD=1 (0x0100); optionally set AD=1 (0x0020) to request DNSSEC-validated status.
+    flags = 0x0100 | (0x0020 if want_dnssec else 0x0000)
+    header = struct.pack(">HHHHHH", txid, flags, 1, 0, 0, 0)
+    return header + encode_name(name) + struct.pack(">HH", rtype, 1)  # IN
+
+
+def _parse_name(msg: bytes, offset: int) -> tuple[str, int]:
+    labels: list[str] = []
+    jumps = 0
+    end = offset
+    jumped = False
+    while True:
+        if offset >= len(msg):
+            raise DnsError("truncated name")
+        length = msg[offset]
+        if length & 0xC0 == 0xC0:  # compression pointer
+            if offset + 1 >= len(msg):
+                raise DnsError("truncated pointer")
+            pointer = ((length & 0x3F) << 8) | msg[offset + 1]
+            if not jumped:
+                end = offset + 2
+            offset = pointer
+            jumped = True
+            jumps += 1
+            if jumps > 32:
+                raise DnsError("compression loop")
+            continue
+        if length == 0:
+            offset += 1
+            break
+        labels.append(msg[offset + 1 : offset + 1 + length].decode("ascii", "replace"))
+        offset += 1 + length
+    if not jumped:
+        end = offset
+    return ".".join(labels), end
+
+
+def parse_response(msg: bytes, expected_txid: int) -> DnsResponse:
+    if len(msg) < 12:
+        raise DnsError("short response")
+    txid, flags, qdcount, ancount, _ns, _ar = struct.unpack(">HHHHHH", msg[:12])
+    if txid != expected_txid:
+        raise DnsError("transaction id mismatch")
+    if flags & 0x0200:  # TC bit -> caller retries via TCP
+        raise _Truncated()
+    rcode = flags & 0x000F
+    offset = 12
+    for _ in range(qdcount):
+        _, offset = _parse_name(msg, offset)
+        offset += 4
+    answers: list[DnsAnswer] = []
+    for _ in range(ancount):
+        _, offset = _parse_name(msg, offset)
+        if offset + 10 > len(msg):
+            raise DnsError("truncated answer")
+        rtype, _rclass, _ttl, rdlength = struct.unpack(">HHIH", msg[offset : offset + 10])
+        offset += 10
+        rdata = msg[offset : offset + rdlength]
+        if len(rdata) != rdlength:
+            raise DnsError("truncated rdata")
+        rdata_offset = offset
+        offset += rdlength
+        if rtype == TYPE_A and rdlength == 4:
+            answers.append(DnsAnswer(rtype, socket.inet_ntop(socket.AF_INET, rdata)))
+        elif rtype == TYPE_AAAA and rdlength == 16:
+            answers.append(DnsAnswer(rtype, socket.inet_ntop(socket.AF_INET6, rdata)))
+        elif rtype == TYPE_TXT:
+            strings: list[bytes] = []
+            pos = 0
+            while pos < len(rdata):
+                slen = rdata[pos]
+                strings.append(rdata[pos + 1 : pos + 1 + slen])
+                pos += 1 + slen
+            answers.append(DnsAnswer(rtype, b"".join(strings).decode("utf-8", "replace")))
+        elif rtype == TYPE_MX and rdlength >= 3:
+            pref = struct.unpack(">H", rdata[:2])[0]
+            host, _ = _parse_name(msg, rdata_offset + 2)
+            answers.append(DnsAnswer(rtype, (pref, host)))
+        elif rtype == TYPE_PTR:
+            host, _ = _parse_name(msg, rdata_offset)
+            answers.append(DnsAnswer(rtype, host))
+        elif rtype == TYPE_TLSA and rdlength >= 3:
+            usage, selector, matching = rdata[0], rdata[1], rdata[2]
+            cert_assoc = rdata[3:].hex()
+            answers.append(DnsAnswer(rtype, (usage, selector, matching, cert_assoc)))
+        # other record types (CNAME chains etc.) are ignored
+    authenticated = bool(flags & 0x0020)  # AD bit
+    return DnsResponse(
+        rcode=rcode,
+        answers=tuple(answers),
+        authenticated=authenticated,
+        answer_count=ancount,
+    )
+
+
+class _Truncated(Exception):
+    pass
+
+
+class Resolver:
+    def __init__(self, nameservers: list[str], timeout: float, retries: int = 2) -> None:
+        if not nameservers:
+            raise DnsError("no nameservers configured")
+        self.nameservers = nameservers
+        self.timeout = timeout
+        self.retries = retries
+
+    def query(self, name: str, rtype: int, want_dnssec: bool = False) -> DnsResponse:
+        last_error: Exception = DnsError("no nameserver reachable")
+        for server in self.nameservers:
+            for _attempt in range(self.retries):
+                txid = random.randint(0, 0xFFFF)
+                request = build_query(name, rtype, txid, want_dnssec=want_dnssec)
+                try:
+                    return self._query_udp(server, request, txid)
+                except _Truncated:
+                    try:
+                        return self._query_tcp(server, request, txid)
+                    except (OSError, DnsError) as exc:
+                        last_error = exc
+                except (OSError, DnsError) as exc:
+                    last_error = exc
+        raise DnsError(str(last_error) or type(last_error).__name__)
+
+    def _address_family(self, server: str) -> int:
+        return socket.AF_INET6 if ":" in server else socket.AF_INET
+
+    def _query_udp(self, server: str, request: bytes, txid: int) -> DnsResponse:
+        with socket.socket(self._address_family(server), socket.SOCK_DGRAM) as sock:
+            sock.settimeout(self.timeout)
+            sock.sendto(request, (server, 53))
+            msg, _addr = sock.recvfrom(4096)
+        return parse_response(msg, txid)
+
+    def _query_tcp(self, server: str, request: bytes, txid: int) -> DnsResponse:
+        with socket.create_connection((server, 53), timeout=self.timeout) as sock:
+            sock.settimeout(self.timeout)
+            sock.sendall(struct.pack(">H", len(request)) + request)
+            raw_len = _recv_exact(sock, 2)
+            (length,) = struct.unpack(">H", raw_len)
+            msg = _recv_exact(sock, length)
+        return parse_response(msg, txid)
+
+
+def _recv_exact(sock: socket.socket, count: int) -> bytes:
+    data = b""
+    while len(data) < count:
+        chunk = sock.recv(count - len(data))
+        if not chunk:
+            raise DnsError("connection closed")
+        data += chunk
+    return data
+
+
+def system_nameservers() -> list[str]:
+    servers: list[str] = []
+    try:
+        with open("/etc/resolv.conf", encoding="utf-8") as handle:
+            for line in handle:
+                parts = line.split()
+                if len(parts) >= 2 and parts[0] == "nameserver":
+                    servers.append(parts[1])
+    except OSError:
+        pass
+    return servers or ["127.0.0.1"]
+
+
+# ---------------------------------------------------------------------------
+# SPF collection
+# ---------------------------------------------------------------------------
+
+_SPF_LOOKUP_MECHANISMS = {"include", "a", "mx", "ptr", "exists"}
+
+
+def get_txt_records(resolver: Resolver, name: str) -> tuple[list[str], str | None]:
+    """Return (records, error). NXDOMAIN yields ([], None)."""
+    try:
+        response = resolver.query(name, TYPE_TXT)
+    except DnsError as exc:
+        return [], f"DNS query failed: {exc}"
+    if response.rcode == RCODE_NXDOMAIN:
+        return [], None
+    if response.rcode != RCODE_NOERROR:
+        return [], f"DNS error: {response.rcode_name}"
+    return [str(a.data) for a in response.answers if a.rtype == TYPE_TXT], None
+
+
+def _spf_records_of(records: list[str]) -> list[str]:
+    return [r for r in records if r.lower() == "v=spf1" or r.lower().startswith("v=spf1 ")]
+
+
+def count_spf_lookups(
+    resolver: Resolver,
+    record: str,
+    _visited: set[str] | None = None,
+    _depth: int = 0,
+) -> tuple[int, list[str]]:
+    """Count DNS-lookup-causing terms (RFC 7208 4.6.4) recursively.
+
+    Returns (count, problems). Recursion into include:/redirect= targets;
+    counting stops gracefully on loops or missing target records.
+    """
+    visited = _visited if _visited is not None else set()
+    problems: list[str] = []
+    count = 0
+    if _depth > 10:
+        return count, ["maximum include/redirect depth exceeded"]
+
+    terms = record.split()[1:]  # drop v=spf1
+    redirect_target: str | None = None
+    has_all = any(t.lstrip("+-~?").lower() == "all" for t in terms)
+
+    for term in terms:
+        lowered = term.lower()
+        if lowered.startswith("redirect="):
+            redirect_target = term.split("=", 1)[1]
+            continue
+        mechanism = lowered.lstrip("+-~?").split(":", 1)[0].split("/", 1)[0]
+        if mechanism not in _SPF_LOOKUP_MECHANISMS:
+            continue
+        count += 1
+        if mechanism == "include":
+            if ":" not in term:
+                problems.append(f"malformed term {term!r}")
+                continue
+            target = term.split(":", 1)[1].split("/", 1)[0]
+            sub_count, sub_problems = _resolve_spf_target(resolver, target, visited, _depth)
+            count += sub_count
+            problems.extend(sub_problems)
+
+    if redirect_target is not None:
+        if has_all:
+            # redirect= is ignored if 'all' is present; no lookup performed
+            problems.append("redirect= modifier is ignored because an 'all' mechanism is present")
+        else:
+            count += 1
+            sub_count, sub_problems = _resolve_spf_target(resolver, redirect_target, visited, _depth)
+            count += sub_count
+            problems.extend(sub_problems)
+
+    return count, problems
+
+
+def _resolve_spf_target(
+    resolver: Resolver, target: str, visited: set[str], depth: int
+) -> tuple[int, list[str]]:
+    key = target.lower()
+    if key in visited:
+        return 0, [f"include/redirect loop involving {target!r}"]
+    visited.add(key)
+    records, error = get_txt_records(resolver, target)
+    if error is not None:
+        return 0, [f"{target}: {error}"]
+    spf = _spf_records_of(records)
+    if not spf:
+        return 0, [f"include/redirect target {target!r} has no SPF record (permerror)"]
+    if len(spf) > 1:
+        return 0, [f"include/redirect target {target!r} has multiple SPF records (permerror)"]
+    return count_spf_lookups(resolver, spf[0], visited, depth + 1)
+
+
+def collect_spf(resolver: Resolver, domain: str) -> dict:
+    records, error = get_txt_records(resolver, domain)
+    spf_records = _spf_records_of(records)
+    result: dict = {
+        "domain": domain,
+        "error": error,
+        "spf_records": spf_records,
+        "lookup_count": None,
+        "problems": [],
+    }
+    if error is None and len(spf_records) == 1:
+        count, problems = count_spf_lookups(resolver, spf_records[0])
+        result["lookup_count"] = count
+        result["problems"] = problems
+    return result
+
+
+# ---------------------------------------------------------------------------
+# DMARC collection
+# ---------------------------------------------------------------------------
+
+
+def collect_dmarc(resolver: Resolver, domain: str) -> dict:
+    records, error = get_txt_records(resolver, f"_dmarc.{domain}")
+    dmarc_records = [
+        r for r in records if r.lower() == "v=dmarc1" or re.match(r"(?i)^v\s*=\s*dmarc1\s*;", r)
+    ]
+    return {"domain": domain, "error": error, "dmarc_records": dmarc_records}
+
+
+# ---------------------------------------------------------------------------
+# RBL collection
+# ---------------------------------------------------------------------------
+
+
+def rbl_query_name(ip: str, rbl: str) -> str:
+    address = ipaddress.ip_address(ip)
+    if address.version == 4:
+        reversed_ip = ".".join(reversed(str(address).split(".")))
+    else:
+        nibbles = address.exploded.replace(":", "")
+        reversed_ip = ".".join(reversed(nibbles))
+    return f"{reversed_ip}.{rbl}"
+
+
+def reverse_pointer(ip: str) -> str:
+    """Return the in-addr.arpa / ip6.arpa name for a PTR lookup."""
+    return ipaddress.ip_address(ip).reverse_pointer
+
+
+def resolve_ptr(resolver: Resolver, ip: str) -> str | None:
+    """Return the first PTR (reverse DNS) name for an IP, or None."""
+    try:
+        response = resolver.query(reverse_pointer(ip), TYPE_PTR)
+    except DnsError:
+        return None
+    if response.rcode != RCODE_NOERROR:
+        return None
+    for answer in response.answers:
+        if answer.rtype == TYPE_PTR and answer.data:
+            return str(answer.data).rstrip(".")
+    return None
+
+
+def resolve_host_ips(resolver: Resolver, host: str) -> list[str]:
+    """Resolve a host name to all its A and AAAA addresses.
+
+    If the input already is an IP literal, it is returned as-is.
+    """
+    try:
+        ipaddress.ip_address(host)
+        return [host]
+    except ValueError:
+        pass
+    ips: list[str] = []
+    for rtype in (TYPE_A, TYPE_AAAA):
+        try:
+            response = resolver.query(host, rtype)
+        except DnsError:
+            continue
+        if response.rcode != RCODE_NOERROR:
+            continue
+        for answer in response.answers:
+            if answer.rtype == rtype and answer.data not in ips:
+                ips.append(str(answer.data))
+    return ips
+
+
+def check_rbl_listing(resolver: Resolver, ip: str, rbl: str) -> dict:
+    """Query one DNSBL for one IP."""
+    name = rbl_query_name(ip, rbl)
+    try:
+        response = resolver.query(name, TYPE_A)
+    except DnsError as exc:
+        return {"rbl": rbl, "status": "timeout", "codes": [], "txt": str(exc)}
+
+    if response.rcode == RCODE_NXDOMAIN:
+        return {"rbl": rbl, "status": "not_listed", "codes": [], "txt": ""}
+    if response.rcode != RCODE_NOERROR:
+        return {"rbl": rbl, "status": "error", "codes": [], "txt": response.rcode_name}
+
+    codes = [str(a.data) for a in response.answers if a.rtype == TYPE_A]
+    if not codes:
+        return {"rbl": rbl, "status": "not_listed", "codes": [], "txt": ""}
+
+    # Return codes outside 127.0.0.0/8 mean the reply is not a valid DNSBL
+    # answer (wildcarding registrar of a dead list, hijacked domain, ...).
+    if any(not code.startswith("127.") for code in codes):
+        return {
+            "rbl": rbl,
+            "status": "error",
+            "codes": codes,
+            "txt": "implausible return code - list dead or hijacked?",
+        }
+
+    # Spamhaus signals blocked/refused queries via 127.255.255.x
+    # (public resolver, missing DQS key, query volume exceeded).
+    if any(code.startswith("127.255.255.") for code in codes):
+        return {
+            "rbl": rbl,
+            "status": "blocked",
+            "codes": codes,
+            "txt": "query refused by list operator (public resolver or query limit)",
+        }
+
+    txt_reason = ""
+    try:
+        txt_response = resolver.query(name, TYPE_TXT)
+        txt_reason = "; ".join(
+            str(a.data) for a in txt_response.answers if a.rtype == TYPE_TXT
+        )
+    except DnsError:
+        pass
+    return {"rbl": rbl, "status": "listed", "codes": codes, "txt": txt_reason}
+
+
+def verify_fcrdns(resolver: Resolver, ip: str, ptr: str | None) -> dict:
+    """Forward-confirmed reverse DNS: does the PTR name resolve back to this IP?"""
+    if not ptr:
+        return {"status": "no_ptr", "forward_ips": []}
+    forward_ips = resolve_host_ips(resolver, ptr)
+    if not forward_ips:
+        return {"status": "no_forward", "forward_ips": []}
+    status = "pass" if ip in forward_ips else "fail"
+    return {"status": status, "forward_ips": forward_ips}
+
+
+def collect_rbl(
+    resolver: Resolver,
+    target: str,
+    origin: str,
+    rbls: list[str],
+    workers: int,
+    fcrdns: bool = False,
+) -> dict:
+    """Collect DNSBL results for one target (host name or IP literal).
+
+    The service item is the target name, which stays stable even when the
+    underlying A/AAAA records change. Each current IP is checked against every
+    DNSBL and annotated with its reverse-DNS (PTR) name, and optionally with a
+    forward-confirmed reverse DNS (FCrDNS) result.
+    """
+    ips = resolve_host_ips(resolver, target)
+    addresses: list[dict] = []
+    for ip in ips:
+        with ThreadPoolExecutor(max_workers=max(1, workers)) as pool:
+            results = list(pool.map(lambda rbl: check_rbl_listing(resolver, ip, rbl), rbls))
+        ptr = resolve_ptr(resolver, ip)
+        entry = {"ip": ip, "ptr": ptr, "results": results}
+        if fcrdns:
+            entry["fcrdns"] = verify_fcrdns(resolver, ip, ptr)
+        addresses.append(entry)
+    return {"target": target, "origin": origin, "addresses": addresses}
+
+
+# ---------------------------------------------------------------------------
+# MX resolution
+# ---------------------------------------------------------------------------
+
+
+def resolve_mx_hosts(resolver: Resolver, domain: str) -> dict[str, str]:
+    """Return mapping mx_hostname -> origin description for all MX hosts of a domain."""
+    found: dict[str, str] = {}
+    try:
+        response = resolver.query(domain, TYPE_MX)
+    except DnsError:
+        return found
+    if response.rcode != RCODE_NOERROR:
+        return found
+    mx_hosts = [str(a.data[1]) for a in response.answers if a.rtype == TYPE_MX]
+    for host in mx_hosts:
+        if not host:  # null MX (RFC 7505)
+            continue
+        found.setdefault(host.rstrip("."), f"MX of {domain}")
+    return found
+
+
+# ---------------------------------------------------------------------------
+# DKIM collection
+# ---------------------------------------------------------------------------
+
+
+def _der_read_len(data: bytes, i: int) -> tuple[int, int]:
+    """Read a DER definite length. Return (length, index_after_length)."""
+    first = data[i]
+    i += 1
+    if first & 0x80 == 0:
+        return first, i
+    num = first & 0x7F
+    length = int.from_bytes(data[i : i + num], "big")
+    return length, i + num
+
+
+def rsa_modulus_bits(der: bytes) -> int | None:
+    """Extract the RSA modulus size (in bits) from a DER SubjectPublicKeyInfo.
+
+    Returns the conventional key size (e.g. 2048), or None if the structure
+    cannot be parsed as an RSA public key. Stdlib-only, no crypto dependency.
+    """
+    try:
+        i = 0
+        if der[i] != 0x30:  # outer SEQUENCE
+            return None
+        _, i = _der_read_len(der, i + 1)
+        if der[i] != 0x30:  # AlgorithmIdentifier SEQUENCE
+            return None
+        alg_len, j = _der_read_len(der, i + 1)
+        i = j + alg_len
+        if der[i] != 0x03:  # subjectPublicKey BIT STRING
+            return None
+        _, j = _der_read_len(der, i + 1)
+        i = j + 1  # skip the "unused bits" byte
+        if der[i] != 0x30:  # RSAPublicKey SEQUENCE
+            return None
+        _, i = _der_read_len(der, i + 1)
+        if der[i] != 0x02:  # modulus INTEGER
+            return None
+        mod_len, i = _der_read_len(der, i + 1)
+        modulus = der[i : i + mod_len].lstrip(b"\x00")
+        return len(modulus) * 8
+    except (IndexError, ValueError):
+        return None
+
+
+def _parse_dkim_tags(record: str) -> dict[str, str]:
+    tags: dict[str, str] = {}
+    for part in record.split(";"):
+        if "=" in part:
+            key, value = part.split("=", 1)
+            tags[key.strip().lower()] = value.strip()
+    return tags
+
+
+def analyze_dkim_record(record: str) -> dict:
+    tags = _parse_dkim_tags(record)
+    key_type = tags.get("k", "rsa").lower()
+    flags = [f.strip().lower() for f in tags.get("t", "").split(":") if f.strip()]
+    public_key = tags.get("p", "")
+    info: dict = {
+        "found": True,
+        "raw": record,
+        "key_type": key_type,
+        "testing": "y" in flags,
+        "revoked": public_key == "",
+        "key_bits": None,
+        "error": None,
+    }
+    if public_key == "":
+        return info  # revoked (empty p=)
+    try:
+        der = base64.b64decode(public_key + "=" * (-len(public_key) % 4))
+    except (ValueError, base64.binascii.Error):
+        info["error"] = "public key is not valid base64"
+        return info
+    if key_type == "rsa":
+        bits = rsa_modulus_bits(der)
+        if bits is None:
+            info["error"] = "could not parse RSA public key"
+        else:
+            info["key_bits"] = bits
+    elif key_type == "ed25519":
+        info["key_bits"] = len(der) * 8  # 256 for a valid Ed25519 key
+    return info
+
+
+def collect_dkim(resolver: Resolver, domain: str, selectors: list[str]) -> dict:
+    selector_data: dict[str, dict] = {}
+    for selector in selectors:
+        records, error = get_txt_records(resolver, f"{selector}._domainkey.{domain}")
+        dkim_records = [
+            r for r in records if r.lower().startswith("v=dkim1") or "p=" in r.lower()
+        ]
+        if error is not None:
+            selector_data[selector] = {"found": False, "error": error}
+        elif not dkim_records:
+            selector_data[selector] = {"found": False, "error": None}
+        else:
+            selector_data[selector] = analyze_dkim_record(dkim_records[0])
+    return {"domain": domain, "selectors": selector_data}
+
+
+# ---------------------------------------------------------------------------
+# Domain-based blacklist (DBL / SURBL / URIBL) collection
+# ---------------------------------------------------------------------------
+
+
+def check_domain_bl_listing(resolver: Resolver, domain: str, zone: str) -> dict:
+    """Query one domain-based blacklist zone for one domain name."""
+    name = f"{domain}.{zone}"
+    try:
+        response = resolver.query(name, TYPE_A)
+    except DnsError as exc:
+        return {"rbl": zone, "status": "timeout", "codes": [], "txt": str(exc)}
+    if response.rcode == RCODE_NXDOMAIN:
+        return {"rbl": zone, "status": "not_listed", "codes": [], "txt": ""}
+    if response.rcode != RCODE_NOERROR:
+        return {"rbl": zone, "status": "error", "codes": [], "txt": response.rcode_name}
+    codes = [str(a.data) for a in response.answers if a.rtype == TYPE_A]
+    if not codes:
+        return {"rbl": zone, "status": "not_listed", "codes": [], "txt": ""}
+    if any(not code.startswith("127.") for code in codes):
+        return {
+            "rbl": zone,
+            "status": "error",
+            "codes": codes,
+            "txt": "implausible return code - list dead or hijacked?",
+        }
+    # Spamhaus DBL uses 127.255.255.x for error/blocked responses (e.g. public resolver).
+    if any(code.startswith("127.255.255.") for code in codes):
+        return {
+            "rbl": zone,
+            "status": "blocked",
+            "codes": codes,
+            "txt": "query refused by list operator (public resolver or query limit)",
+        }
+    txt_reason = ""
+    try:
+        txt_response = resolver.query(name, TYPE_TXT)
+        txt_reason = "; ".join(str(a.data) for a in txt_response.answers if a.rtype == TYPE_TXT)
+    except DnsError:
+        pass
+    return {"rbl": zone, "status": "listed", "codes": codes, "txt": txt_reason}
+
+
+def collect_domain_bl(resolver: Resolver, domain: str, zones: list[str], workers: int) -> dict:
+    with ThreadPoolExecutor(max_workers=max(1, workers)) as pool:
+        results = list(pool.map(lambda z: check_domain_bl_listing(resolver, domain, z), zones))
+    return {"domain": domain, "results": results}
+
+
+# ---------------------------------------------------------------------------
+# MTA-STS + TLS-RPT collection
+# ---------------------------------------------------------------------------
+
+
+def _parse_mta_sts_policy(body: str) -> dict:
+    """Parse an mta-sts.txt policy file (line-based 'key: value', mx repeats)."""
+    version = None
+    mode = None
+    max_age = None
+    mx: list[str] = []
+    for line in body.splitlines():
+        if ":" not in line:
+            continue
+        key, value = line.split(":", 1)
+        key = key.strip().lower()
+        value = value.strip()
+        if key == "version":
+            version = value
+        elif key == "mode":
+            mode = value.lower()
+        elif key == "max_age":
+            max_age = value
+        elif key == "mx":
+            mx.append(value)
+    return {"version": version, "mode": mode, "max_age": max_age, "mx": mx}
+
+
+def fetch_mta_sts_policy(domain: str, timeout: float) -> dict:
+    url = f"https://mta-sts.{domain}/.well-known/mta-sts.txt"
+    context = ssl.create_default_context()
+    request = urllib.request.Request(url, headers={"User-Agent": "checkmk-mail-domain-health/1"})
+    try:
+        with urllib.request.urlopen(request, timeout=timeout, context=context) as response:
+            status = response.status
+            body = response.read(65536).decode("utf-8", "replace")
+    except urllib.error.HTTPError as exc:
+        return {"fetched": False, "http_status": exc.code, "error": f"HTTP {exc.code}"}
+    except ssl.SSLError as exc:
+        return {"fetched": False, "http_status": None, "error": f"TLS error: {exc.reason}"}
+    except (urllib.error.URLError, OSError, ValueError) as exc:
+        return {"fetched": False, "http_status": None, "error": str(exc)}
+    policy = _parse_mta_sts_policy(body)
+    policy.update({"fetched": True, "http_status": status, "error": None})
+    return policy
+
+
+def collect_mta_sts(resolver: Resolver, domain: str, http_timeout: float) -> dict:
+    sts_records, sts_error = get_txt_records(resolver, f"_mta-sts.{domain}")
+    sts_txt = [r for r in sts_records if r.lower().startswith("v=stsv1")]
+    sts_id = None
+    if sts_txt:
+        sts_id = _parse_dkim_tags(sts_txt[0]).get("id")
+
+    tls_records, tls_error = get_txt_records(resolver, f"_smtp._tls.{domain}")
+    tls_rpt = [r for r in tls_records if r.lower().startswith("v=tlsrptv1")]
+    tls_rua = None
+    if tls_rpt:
+        tls_rua = _parse_dkim_tags(tls_rpt[0]).get("rua")
+
+    policy = None
+    if sts_txt:  # only fetch the policy if the domain advertises MTA-STS
+        policy = fetch_mta_sts_policy(domain, http_timeout)
+
+    actual_mx = sorted(resolve_mx_hosts(resolver, domain).keys())
+
+    return {
+        "domain": domain,
+        "sts": {"found": bool(sts_txt), "id": sts_id, "error": sts_error, "raw": sts_txt},
+        "policy": policy,
+        "tls_rpt": {"found": bool(tls_rpt), "rua": tls_rua, "error": tls_error},
+        "actual_mx": actual_mx,
+    }
+
+
+# ---------------------------------------------------------------------------
+# DANE / TLSA
+# ---------------------------------------------------------------------------
+
+_TLSA_USAGE = {0: "PKIX-TA", 1: "PKIX-EE", 2: "DANE-TA", 3: "DANE-EE"}
+_TLSA_SELECTOR = {0: "full-cert", 1: "SPKI"}
+_TLSA_MATCHING = {0: "exact", 1: "SHA-256", 2: "SHA-512"}
+
+
+def _der_element_slices(data: bytes, start: int, container_len: int) -> list[tuple[int, bytes]]:
+    """Return (tag, full_element_bytes) for each TLV element in a DER container."""
+    elements: list[tuple[int, bytes]] = []
+    i = start
+    end = start + container_len
+    while i < end:
+        tag = data[i]
+        length, j = _der_read_len(data, i + 1)
+        element = data[i : j + length]
+        elements.append((tag, element))
+        i = j + length
+    return elements
+
+
+def extract_spki(cert_der: bytes) -> bytes | None:
+    """Extract the SubjectPublicKeyInfo (DER) from an X.509 certificate."""
+    try:
+        if cert_der[0] != 0x30:
+            return None
+        cert_len, cert_body = _der_read_len(cert_der, 1)
+        # first element of Certificate is tbsCertificate (SEQUENCE)
+        if cert_der[cert_body] != 0x30:
+            return None
+        tbs_len, tbs_body = _der_read_len(cert_der, cert_body + 1)
+        elements = _der_element_slices(cert_der, tbs_body, tbs_len)
+        # tbsCertificate ::= [version?] serial sigAlg issuer validity subject SPKI ...
+        index = 6 if elements and elements[0][0] == 0xA0 else 5
+        if index < len(elements):
+            return elements[index][1]
+        return None
+    except (IndexError, ValueError):
+        return None
+
+
+def _tlsa_match(cert_der: bytes, selector: int, matching: int, expected_hex: str) -> bool:
+    import hashlib
+
+    if selector == 0:
+        data = cert_der
+    elif selector == 1:
+        data = extract_spki(cert_der)
+        if data is None:
+            return False
+    else:
+        return False
+    if matching == 0:
+        actual = data.hex()
+    elif matching == 1:
+        actual = hashlib.sha256(data).hexdigest()
+    elif matching == 2:
+        actual = hashlib.sha512(data).hexdigest()
+    else:
+        return False
+    return actual.lower() == expected_hex.lower()
+
+
+def fetch_smtp_certificate(host: str, timeout: float) -> bytes | None:
+    """Connect to an MX on port 25, perform STARTTLS, and return the peer cert (DER)."""
+    try:
+        with socket.create_connection((host, 25), timeout=timeout) as sock:
+            sock.settimeout(timeout)
+            reader = sock.makefile("rb")
+            reader.readline()  # 220 banner
+            sock.sendall(b"EHLO checkmk.mail.security\r\n")
+            while True:
+                line = reader.readline()
+                if not line or line[3:4] != b"-":
+                    break
+            sock.sendall(b"STARTTLS\r\n")
+            resp = reader.readline()
+            if not resp.startswith(b"220"):
+                return None
+            context = ssl.create_default_context()
+            context.check_hostname = False
+            context.verify_mode = ssl.CERT_NONE
+            with context.wrap_socket(sock, server_hostname=host) as tls:
+                return tls.getpeercert(binary_form=True)
+    except (OSError, ssl.SSLError):
+        return None
+
+
+def collect_dane(resolver: Resolver, domain: str, verify: bool, timeout: float) -> dict:
+    mx_hosts = sorted(resolve_mx_hosts(resolver, domain).keys())
+    hosts_data: list[dict] = []
+    for host in mx_hosts:
+        query_name = f"_25._tcp.{host}"
+        try:
+            response = resolver.query(query_name, TYPE_TLSA, want_dnssec=True)
+        except DnsError as exc:
+            hosts_data.append({"host": host, "error": str(exc), "records": []})
+            continue
+        if response.rcode == RCODE_NXDOMAIN or (
+            response.rcode == RCODE_NOERROR and not response.answers
+        ):
+            hosts_data.append(
+                {"host": host, "error": None, "records": [], "authenticated": response.authenticated}
+            )
+            continue
+        if response.rcode != RCODE_NOERROR:
+            hosts_data.append({"host": host, "error": response.rcode_name, "records": []})
+            continue
+
+        records = [
+            {
+                "usage": a.data[0],
+                "selector": a.data[1],
+                "matching": a.data[2],
+                "cert_assoc": a.data[3],
+            }
+            for a in response.answers
+            if a.rtype == TYPE_TLSA
+        ]
+
+        verified = None
+        if verify and records:
+            cert = fetch_smtp_certificate(host, timeout)
+            if cert is None:
+                verified = "no_cert"
+            else:
+                verified = "match" if any(
+                    _tlsa_match(cert, r["selector"], r["matching"], r["cert_assoc"])
+                    for r in records
+                ) else "mismatch"
+
+        hosts_data.append(
+            {
+                "host": host,
+                "error": None,
+                "authenticated": response.authenticated,
+                "records": records,
+                "verified": verified,
+            }
+        )
+    return {"domain": domain, "hosts": hosts_data}
+
+
+# ---------------------------------------------------------------------------
+# BIMI
+# ---------------------------------------------------------------------------
+
+
+def fetch_url_head(url: str, timeout: float) -> dict:
+    """Fetch a URL over HTTPS and report reachability, status, and content type.
+
+    Reads a small prefix of the body (enough to sanity-check SVG). Only https
+    URLs are accepted, matching the BIMI requirement.
+    """
+    if not url.lower().startswith("https://"):
+        return {"reachable": False, "status": None, "content_type": None, "error": "not an https URL"}
+    context = ssl.create_default_context()
+    request = urllib.request.Request(url, headers={"User-Agent": "checkmk-mail-domain-health/1"})
+    try:
+        with urllib.request.urlopen(request, timeout=timeout, context=context) as response:
+            content_type = response.headers.get("Content-Type", "")
+            prefix = response.read(4096).decode("utf-8", "replace")
+        return {
+            "reachable": True,
+            "status": 200,
+            "content_type": content_type,
+            "is_svg": "svg" in content_type.lower() or "<svg" in prefix.lower(),
+            "error": None,
+        }
+    except urllib.error.HTTPError as exc:
+        return {"reachable": False, "status": exc.code, "content_type": None, "error": f"HTTP {exc.code}"}
+    except (urllib.error.URLError, ssl.SSLError, OSError, ValueError) as exc:
+        return {"reachable": False, "status": None, "content_type": None, "error": str(exc)}
+
+
+def collect_bimi(
+    resolver: Resolver,
+    domain: str,
+    selector: str = "default",
+    check_urls: bool = False,
+    http_timeout: float = 10.0,
+) -> dict:
+    records, error = get_txt_records(resolver, f"{selector}._bimi.{domain}")
+    bimi = [r for r in records if r.lower().startswith("v=bimi1")]
+    result: dict = {
+        "domain": domain,
+        "selector": selector,
+        "error": error,
+        "found": bool(bimi),
+        "logo_url": None,
+        "vmc_url": None,
+        "logo_check": None,
+        "vmc_check": None,
+        "raw": bimi[0] if bimi else None,
+    }
+    if bimi:
+        tags = _parse_dkim_tags(bimi[0])
+        result["logo_url"] = tags.get("l") or None
+        result["vmc_url"] = tags.get("a") or None
+        if check_urls:
+            if result["logo_url"]:
+                result["logo_check"] = fetch_url_head(result["logo_url"], http_timeout)
+            if result["vmc_url"]:
+                result["vmc_check"] = fetch_url_head(result["vmc_url"], http_timeout)
+    return result
+
+
+# ---------------------------------------------------------------------------
+# Domain registration expiry (RDAP)
+# ---------------------------------------------------------------------------
+
+
+def collect_rdap_expiry(domain: str, http_timeout: float) -> dict:
+    # Query the RDAP bootstrap aggregator, which redirects to the right registry.
+    url = f"https://rdap.org/domain/{domain}"
+    context = ssl.create_default_context()
+    request = urllib.request.Request(url, headers={"User-Agent": "checkmk-mail-domain-health/1"})
+    try:
+        with urllib.request.urlopen(request, timeout=http_timeout, context=context) as response:
+            body = response.read(1_000_000).decode("utf-8", "replace")
+    except urllib.error.HTTPError as exc:
+        return {"domain": domain, "error": f"HTTP {exc.code}", "expiry": None}
+    except (urllib.error.URLError, ssl.SSLError, OSError, ValueError) as exc:
+        return {"domain": domain, "error": str(exc), "expiry": None}
+
+    try:
+        data = json.loads(body)
+    except ValueError:
+        return {"domain": domain, "error": "invalid RDAP JSON", "expiry": None}
+
+    expiry = None
+    for event in data.get("events", []):
+        if event.get("eventAction") == "expiration":
+            expiry = event.get("eventDate")
+            break
+    registrar = None
+    for entity in data.get("entities", []):
+        roles = entity.get("roles", [])
+        if "registrar" in roles:
+            vcard = entity.get("vcardArray")
+            if isinstance(vcard, list) and len(vcard) > 1:
+                for item in vcard[1]:
+                    if isinstance(item, list) and item and item[0] == "fn":
+                        registrar = item[3] if len(item) > 3 else None
+            break
+
+    return {
+        "domain": domain,
+        "error": None if expiry else "no expiration event in RDAP response",
+        "expiry": expiry,
+        "registrar": registrar,
+    }
+
+
+# ---------------------------------------------------------------------------
+# main
+# ---------------------------------------------------------------------------
+
+# Note: there is deliberately no built-in default set of DNSBL / domain
+# blacklist zones. Public blacklists come and go, some become abandoned or get
+# wildcard-hijacked, and a stale bundled list would produce silent false
+# results. The zones to query must be configured explicitly in the rule; the
+# rule's help text lists commonly used zones to copy from.
+
+
+@dataclass
+class Args:
+    domains: list[str] = field(default_factory=list)
+    targets: list[str] = field(default_factory=list)
+    rbls: list[str] = field(default_factory=list)
+    nameservers: list[str] = field(default_factory=list)
+    timeout: float = 5.0
+    resolve_mx: bool = False
+    workers: int = 12
+    debug: bool = False
+    # SPF and DMARC are on by default but can be disabled.
+    spf: bool = True
+    dmarc: bool = True
+    # optional features
+    dkim_selectors: list[str] = field(default_factory=list)
+    dkim_selectors_for: list[str] = field(default_factory=list)  # "domain=selector" pairs
+    domain_bls: list[str] = field(default_factory=list)
+    check_domain_bl: bool = False
+    fcrdns: bool = False
+    mta_sts: bool = False
+    http_timeout: float = 10.0
+    dane: bool = False
+    dane_verify: bool = False
+    bimi: bool = False
+    bimi_selector: str = "default"
+    bimi_check_urls: bool = False
+    rdap: bool = False
+
+
+def parse_arguments(argv: list[str]) -> Args:
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--domain", action="append", default=[], dest="domains", metavar="DOMAIN")
+    # --target accepts a host name or an IP literal; --ip is kept as an alias.
+    parser.add_argument(
+        "--target", "--ip", action="append", default=[], dest="targets", metavar="HOST_OR_IP"
+    )
+    parser.add_argument("--rbl", action="append", default=[], dest="rbls", metavar="ZONE")
+    parser.add_argument(
+        "--nameserver", action="append", default=[], dest="nameservers", metavar="IP"
+    )
+    parser.add_argument("--timeout", type=float, default=5.0)
+    parser.add_argument("--resolve-mx", action="store_true", dest="resolve_mx")
+    parser.add_argument("--workers", type=int, default=12)
+    parser.add_argument("--debug", action="store_true")
+    # SPF/DMARC default on; --no-spf / --no-dmarc disable them.
+    parser.add_argument("--no-spf", action="store_false", dest="spf")
+    parser.add_argument("--no-dmarc", action="store_false", dest="dmarc")
+    # optional features
+    parser.add_argument(
+        "--dkim-selector", action="append", default=[], dest="dkim_selectors", metavar="SELECTOR"
+    )
+    parser.add_argument(
+        "--dkim-selector-for",
+        action="append",
+        default=[],
+        dest="dkim_selectors_for",
+        metavar="DOMAIN=SELECTOR",
+    )
+    parser.add_argument(
+        "--domain-bl", action="append", default=[], dest="domain_bls", metavar="ZONE"
+    )
+    parser.add_argument("--check-domain-bl", action="store_true", dest="check_domain_bl")
+    parser.add_argument("--fcrdns", action="store_true", dest="fcrdns")
+    parser.add_argument("--mta-sts", action="store_true", dest="mta_sts")
+    parser.add_argument("--http-timeout", type=float, default=10.0, dest="http_timeout")
+    parser.add_argument("--dane", action="store_true", dest="dane")
+    parser.add_argument("--dane-verify", action="store_true", dest="dane_verify")
+    parser.add_argument("--bimi", action="store_true", dest="bimi")
+    parser.add_argument("--bimi-selector", default="default", dest="bimi_selector")
+    parser.add_argument("--bimi-check-urls", action="store_true", dest="bimi_check_urls")
+    parser.add_argument("--rdap", action="store_true", dest="rdap")
+    namespace = parser.parse_args(argv)
+    return Args(**vars(namespace))
+
+
+def main(argv: list[str] | None = None) -> int:
+    args = parse_arguments(sys.argv[1:] if argv is None else argv)
+    resolver = Resolver(args.nameservers or system_nameservers(), timeout=args.timeout)
+
+    try:
+        if args.domains:
+            if args.spf:
+                sys.stdout.write("<<<mail_domain_health_spf:sep(0)>>>\n")
+                for domain in args.domains:
+                    sys.stdout.write(json.dumps(collect_spf(resolver, domain)) + "\n")
+
+            if args.dmarc:
+                sys.stdout.write("<<<mail_domain_health_dmarc:sep(0)>>>\n")
+                for domain in args.domains:
+                    sys.stdout.write(json.dumps(collect_dmarc(resolver, domain)) + "\n")
+
+            # Per-domain DKIM selectors: global selectors apply to every domain,
+            # plus any domain-specific selectors from --dkim-selector-for.
+            per_domain_selectors: dict[str, list[str]] = {}
+            for pair in args.dkim_selectors_for:
+                if "=" in pair:
+                    dom, sel = pair.split("=", 1)
+                    per_domain_selectors.setdefault(dom.strip(), []).append(sel.strip())
+
+            if args.dkim_selectors or per_domain_selectors:
+                sys.stdout.write("<<<mail_domain_health_dkim:sep(0)>>>\n")
+                for domain in args.domains:
+                    effective = list(args.dkim_selectors)
+                    for sel in per_domain_selectors.get(domain, []):
+                        if sel not in effective:
+                            effective.append(sel)
+                    if effective:
+                        sys.stdout.write(
+                            json.dumps(collect_dkim(resolver, domain, effective)) + "\n"
+                        )
+
+            if args.check_domain_bl and args.domain_bls:
+                sys.stdout.write("<<<mail_domain_health_domain_bl:sep(0)>>>\n")
+                for domain in args.domains:
+                    sys.stdout.write(
+                        json.dumps(
+                            collect_domain_bl(resolver, domain, args.domain_bls, args.workers)
+                        )
+                        + "\n"
+                    )
+
+            if args.mta_sts:
+                sys.stdout.write("<<<mail_domain_health_mta_sts:sep(0)>>>\n")
+                for domain in args.domains:
+                    sys.stdout.write(
+                        json.dumps(collect_mta_sts(resolver, domain, args.http_timeout)) + "\n"
+                    )
+
+            if args.dane:
+                sys.stdout.write("<<<mail_domain_health_dane:sep(0)>>>\n")
+                for domain in args.domains:
+                    sys.stdout.write(
+                        json.dumps(
+                            collect_dane(resolver, domain, args.dane_verify, args.timeout)
+                        )
+                        + "\n"
+                    )
+
+            if args.bimi:
+                sys.stdout.write("<<<mail_domain_health_bimi:sep(0)>>>\n")
+                for domain in args.domains:
+                    sys.stdout.write(
+                        json.dumps(
+                            collect_bimi(
+                                resolver,
+                                domain,
+                                args.bimi_selector,
+                                args.bimi_check_urls,
+                                args.http_timeout,
+                            )
+                        )
+                        + "\n"
+                    )
+
+            if args.rdap:
+                sys.stdout.write("<<<mail_domain_health_rdap:sep(0)>>>\n")
+                for domain in args.domains:
+                    sys.stdout.write(
+                        json.dumps(collect_rdap_expiry(domain, args.http_timeout)) + "\n"
+                    )
+
+        # Targets are keyed by a stable name (host name or IP literal). This keeps
+        # the service item stable even when the underlying A/AAAA records change.
+        targets: dict[str, str] = {target: "configured" for target in args.targets}
+        if args.resolve_mx:
+            for domain in args.domains:
+                for host, origin in resolve_mx_hosts(resolver, domain).items():
+                    targets.setdefault(host, origin)
+
+        if targets and args.rbls:
+            sys.stdout.write("<<<mail_domain_health_rbl:sep(0)>>>\n")
+            for target, origin in sorted(targets.items()):
+                sys.stdout.write(
+                    json.dumps(
+                        collect_rbl(resolver, target, origin, args.rbls, args.workers, args.fcrdns)
+                    )
+                    + "\n"
+                )
+    except Exception as exc:  # pylint: disable=broad-except
+        if args.debug:
+            raise
+        sys.stderr.write(f"agent_mail_domain_health: {exc}\n")
+        return 1
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

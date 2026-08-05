@@ -1,0 +1,23 @@
+title: Mail domain health: domain-based blacklists
+agents: mail_domain_health
+catalog: app/mail_domain_health
+license: GPLv2
+distribution:
+description:
+ This check queries domain-reputation blacklists (DBL/SURBL/URIBL) for a
+ domain, collected by the {mail_domain_health} special agent via DNS. This detects a
+ domain's reputation being damaged independently of any mail server IP address.
+
+ The number of listings is measured against configurable levels (default {WARN}
+ at one, {CRIT} at two), and every queried list is shown individually in the
+ service details. Queries refused or blocked by a list operator are
+ distinguished from genuine "not listed" answers.
+
+ All thresholds and states are configurable via the rule "Mail security:
+ domain-based blacklists".
+
+item:
+ The domain name.
+
+discovery:
+ One service is created for each configured domain when the feature is enabled.

@@ -1,0 +1,22 @@
+title: Mail domain health: MTA-STS / TLS-RPT
+agents: mail_domain_health
+catalog: app/mail_domain_health
+license: GPLv2
+distribution:
+description:
+ This check evaluates the MTA-STS and TLS-RPT configuration of a domain,
+ collected by the {mail_domain_health} special agent. It verifies the presence of
+ the {_mta-sts} TXT record, fetches the policy file over HTTPS and validates its
+ mode, {mx} list and {max_age}, compares the policy {mx} list against the
+ domain's actual MX records, and detects changes to the policy {id} across
+ check cycles. The presence of a {_smtp._tls} TLS-RPT record is also checked.
+
+ Fetching the policy file requires outbound HTTPS from the Checkmk server. All
+ thresholds and states are configurable via the rule "Mail security: MTA-STS /
+ TLS-RPT".
+
+item:
+ The domain name.
+
+discovery:
+ One service is created for each configured domain when the feature is enabled.

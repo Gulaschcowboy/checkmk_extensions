@@ -1,0 +1,23 @@
+title: Mail domain health: DANE/TLSA
+agents: mail_domain_health
+catalog: app/mail_domain_health
+license: GPLv2
+distribution:
+description:
+ This check evaluates DANE/TLSA records published at {_25._tcp.<mxhost>} for the
+ MX hosts of a domain, collected by the {mail_domain_health} special agent. The
+ usage, selector and matching type of each record are reported. Because DANE is
+ only meaningful when the TLSA records are DNSSEC-signed, records that are not
+ covered by the resolver's AD bit are flagged.
+
+ Optionally the check connects to each MX host on port 25, performs STARTTLS and
+ verifies that the presented certificate matches one of the published TLSA
+ records; this requires outbound port 25 from the Checkmk server.
+
+ All states are configurable via the rule "Mail security: DANE/TLSA".
+
+item:
+ The domain name.
+
+discovery:
+ One service is created for each configured domain when the feature is enabled.
