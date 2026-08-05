@@ -1,0 +1,26 @@
+{'author': 'Christian Wirtz',
+ 'description': "Monitors the DNSSEC status of arbitrary domains (not only "
+                "mail domains). For each configured domain a 'DNSSEC "
+                "<domain>' service reports whether the domain is signed "
+                "(DNSKEY present) and whether the configured recursive "
+                "resolver validated the signatures (AD bit). The 'validated' "
+                "result requires the Checkmk server to use a validating "
+                "resolver. Special agent using DNS queries from the Checkmk "
+                "site - no agent deployment, pure Python stdlib, no "
+                "dependencies. Configure via Setup > Agents > Other "
+                "integrations > DNSSEC status. Split out from the "
+                "mail_domain_health plugin so DNSSEC can be monitored "
+                "independently of any mail checks and on non-mail domains.",
+ 'download_url': 'https://github.com/Gulaschcowboy/checkmk_extensions',
+ 'files': {'cmk_addons_plugins': ['dnssec_health/agent_based/dnssec_health.py',
+                                  'dnssec_health/libexec/agent_dnssec_health',
+                                  'dnssec_health/rulesets/special_agent_dnssec_health.py',
+                                  'dnssec_health/rulesets/check_parameters_dnssec_health.py',
+                                  'dnssec_health/server_side_calls/dnssec_health.py',
+                                  'dnssec_health/checkman/dnssec_health']},
+ 'name': 'dnssec_health',
+ 'title': 'DNSSEC health',
+ 'version': '1.0.1',
+ 'version.min_required': '2.5.0',
+ 'version.packaged': '2.5.0',
+ 'version.usable_until': None}

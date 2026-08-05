@@ -1,0 +1,21 @@
+title: DNSSEC status
+agents: dnssec_health
+catalog: app/dnssec_health
+license: GPLv2
+distribution:
+description:
+ This check reports the DNSSEC status of a domain, collected by the
+ {dnssec_health} special agent. It determines whether the domain is signed
+ (presence of DNSKEY records) and whether the configured recursive resolver
+ validated the signatures (the AD bit in the response). The "validated" result
+ therefore depends on the Checkmk server using a validating resolver.
+
+ The plugin works on any domain, not only mail domains.
+
+ States are configurable via the rule "DNSSEC status".
+
+item:
+ The domain name.
+
+discovery:
+ One service is created for each configured domain.
