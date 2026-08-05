@@ -15,7 +15,11 @@
                 '\n'
                 '1.2.1: fix bakery writing the API key as a raw cmk_postprocessed tuple\n'
                 '(caused HTTP 401), fix agent-plugin crash on an empty webserver-address in\n'
-                'pdns.conf, and align the agent PLUGIN_VERSION with the package version.\n',
+                'pdns.conf, and align the agent PLUGIN_VERSION with the package version.\n'
+                '\n'
+                '1.2.2: auth API auto-detection now treats api=yes as implicitly enabling the\n'
+                'built-in webserver (PowerDNS behaviour), so the zone inventory works without a\n'
+                'separate webserver=yes line in pdns.conf.\n',
  'download_url': 'https://github.com/Gulaschcowboy/checkmk_extensions',
  'files': {'agents': ['plugins/powerdns'],
            'cmk_addons_plugins': ['powerdns/agent_based/powerdns_auth.py',
@@ -41,7 +45,7 @@
            'lib': ['python3/cmk/base/cee/plugins/bakery/powerdns.py']},
  'name': 'powerdns',
  'title': 'PowerDNS Authoritative Server and Recursor',
- 'version': '1.2.1',
+ 'version': '1.2.2',
  'version.min_required': '2.5.0b1',
  'version.packaged': 'cmk-mkp-tool 3.0.0',
  'version.usable_until': None}

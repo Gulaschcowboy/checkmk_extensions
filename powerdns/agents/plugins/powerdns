@@ -33,7 +33,7 @@ import time
 import urllib.error
 import urllib.request
 
-PLUGIN_VERSION = "1.2.1"
+PLUGIN_VERSION = "1.2.2"
 
 CFG_FILE = os.path.join(os.environ.get("MK_CONFDIR", "/etc/check_mk"), "powerdns.cfg")
 VAR_DIR = os.environ.get("MK_VARDIR", "/var/lib/check_mk_agent")
@@ -174,7 +174,12 @@ def auth_endpoint(cfg):
     if not key:
         key = settings.get("api-key", "")
     if not url:
-        if not _as_bool(settings.get("webserver")) or not _as_bool(settings.get("api")):
+        # PowerDNS Authoritative starts the built-in webserver implicitly when
+        # ``api=yes`` -- a separate ``webserver=yes`` line is not required (and
+        # is absent in many setups).  The REST API (and therefore the zone
+        # inventory) is available whenever ``api=yes``, so key off that alone;
+        # honour an explicit ``webserver=yes`` too for completeness.
+        if not (_as_bool(settings.get("api")) or _as_bool(settings.get("webserver"))):
             return "", key
         address_parts = (settings.get("webserver-address") or "127.0.0.1").split()
         address = address_parts[0] if address_parts else "127.0.0.1"

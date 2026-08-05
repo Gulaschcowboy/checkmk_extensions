@@ -4,12 +4,21 @@ Checkmk check plugins that monitor the **PowerDNS Authoritative Server** and the
 **PowerDNS Recursor** through their built-in HTTP APIs, with a control-socket
 fallback (`pdns_control` / `rec_control`) when the API is unavailable.
 
-Author: Christian Wirtz (upstream). This subdirectory ships version **1.2.1**,
-rebuilt with the Checkmk site `mkp` tool after two bug fixes were applied to the
+Author: Christian Wirtz (upstream). This subdirectory ships version **1.2.2**,
+rebuilt with the Checkmk site `mkp` tool after bug fixes were applied to the
 upstream sources (see Changelog); the packaging `download_url` points at this
 repo.
 
 ## Changelog
+
+### 1.2.2
+- **Auth API auto-detection fix:** the authoritative endpoint auto-detection
+  required an explicit `webserver=yes` line in `pdns.conf`. PowerDNS enables its
+  built-in webserver (and REST API) implicitly with `api=yes`, so setups that set
+  only `api=yes` got the statistics section (control-socket fallback) but an empty
+  `powerdns_auth_zones` section (`zone inventory needs the HTTP API`). Detection
+  now treats `api=yes` as sufficient, so the zone inventory works without a
+  separate `webserver=yes` line.
 
 ### 1.2.1
 - **Bakery API-key fix:** the CEE agent bakery wrote the API key into
@@ -56,8 +65,8 @@ three JSON sections; services are auto-discovered:
 ## Installation
 
 ```sh
-mkp add powerdns-1.2.1.mkp
-mkp enable powerdns 1.2.1
+mkp add powerdns-1.2.2.mkp
+mkp enable powerdns 1.2.2
 ```
 
 Then:
@@ -92,7 +101,7 @@ powerdns/
 ├── lib/python3/cmk/base/cee/plugins/bakery/powerdns.py   # agent bakery (CEE)
 ├── doc/powerdns.cfg.example                         # sample config
 ├── powerdns.manifest.temp                           # MKP manifest
-└── powerdns-1.2.1.mkp                               # built package
+└── powerdns-1.2.2.mkp                               # built package
 ```
 
 Note: unlike the other packages in this repo, `powerdns` spans four MKP file
