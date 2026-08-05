@@ -22,8 +22,25 @@ from .bakery_api.v1 import (
     FileGenerator,
     Plugin,
     PluginConfig,
+    password_store,
     register,
 )
+
+
+def _resolve_password(value: Any) -> str:
+    """Turn a form_spec Password value into the plaintext secret.
+
+    The ``Password`` form_spec (with ``migrate_to_password``) delivers a
+    ``('cmk_postprocessed', 'explicit_password'|'stored_password', (id, secret))``
+    tuple, not a bare string. Writing that tuple verbatim into powerdns.cfg is a
+    bug: the agent plugin would send the whole repr as the ``X-API-Key`` header
+    and the PowerDNS API answers 401. ``extract_formspec_password`` resolves both
+    the explicit and the stored-password variants to the plaintext secret.
+    Older rules (or a plain string) are passed through unchanged.
+    """
+    if isinstance(value, (tuple, list)) and len(value) == 3 and value[0] == "cmk_postprocessed":
+        return password_store.extract_formspec_password(tuple(value))
+    return str(value)
 
 
 def _config_lines(config: dict[str, Any]) -> list[str]:
@@ -41,7 +58,7 @@ def _config_lines(config: dict[str, Any]) -> list[str]:
     if config.get("auth_url"):
         put("url", config["auth_url"])
     if config.get("auth_api_key"):
-        put("api_key", config["auth_api_key"])
+        put("api_key", _resolve_password(config["auth_api_key"]))
     if "zones" in config:
         put("zones", "yes" if config["zones"] else "no")
     if config.get("zone_refresh") is not None:
@@ -55,7 +72,7 @@ def _config_lines(config: dict[str, Any]) -> list[str]:
     if config.get("recursor_url"):
         put("url", config["recursor_url"])
     if config.get("recursor_api_key"):
-        put("api_key", config["recursor_api_key"])
+        put("api_key", _resolve_password(config["recursor_api_key"]))
     if config.get("recursor_enabled") is False:
         put("enabled", "no")
 

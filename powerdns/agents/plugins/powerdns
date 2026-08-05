@@ -33,7 +33,7 @@ import time
 import urllib.error
 import urllib.request
 
-PLUGIN_VERSION = "1.0.0"
+PLUGIN_VERSION = "1.2.1"
 
 CFG_FILE = os.path.join(os.environ.get("MK_CONFDIR", "/etc/check_mk"), "powerdns.cfg")
 VAR_DIR = os.environ.get("MK_VARDIR", "/var/lib/check_mk_agent")
@@ -176,8 +176,9 @@ def auth_endpoint(cfg):
     if not url:
         if not _as_bool(settings.get("webserver")) or not _as_bool(settings.get("api")):
             return "", key
-        address = settings.get("webserver-address", "127.0.0.1").split()[0]
-        port = settings.get("webserver-port", "8081")
+        address_parts = (settings.get("webserver-address") or "127.0.0.1").split()
+        address = address_parts[0] if address_parts else "127.0.0.1"
+        port = settings.get("webserver-port") or "8081"
         url = _build_url(address, port)
     return url, key
 

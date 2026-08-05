@@ -4,8 +4,26 @@ Checkmk check plugins that monitor the **PowerDNS Authoritative Server** and the
 **PowerDNS Recursor** through their built-in HTTP APIs, with a control-socket
 fallback (`pdns_control` / `rec_control`) when the API is unavailable.
 
-Author: Christian Wirtz. This subdirectory redistributes the upstream `.mkp`
-unchanged (only the packaging `download_url` points at this repo).
+Author: Christian Wirtz (upstream). This subdirectory ships version **1.2.1**,
+rebuilt with the Checkmk site `mkp` tool after two bug fixes were applied to the
+upstream sources (see Changelog); the packaging `download_url` points at this
+repo.
+
+## Changelog
+
+### 1.2.1
+- **Bakery API-key fix:** the CEE agent bakery wrote the API key into
+  `/etc/check_mk/powerdns.cfg` as the raw `('cmk_postprocessed',
+  'explicit_password', (id, secret))` form_spec tuple instead of the plaintext
+  secret. The agent plugin then sent that repr as the `X-API-Key` header and the
+  PowerDNS HTTP API answered **401**, leaving the zone section empty. The bakery
+  now resolves the secret with `password_store.extract_formspec_password`.
+- **Agent-plugin crash fix:** an empty `webserver-address=` in `pdns.conf`
+  triggered `list index out of range` in the authoritative endpoint
+  auto-detection (`"".split()[0]`). It now falls back to `127.0.0.1` for an empty
+  or whitespace-only value.
+- **Version alignment:** the agent plugin's `PLUGIN_VERSION` constant (was stuck
+  at `1.0.0`) now tracks the package version.
 
 ## What it monitors
 
@@ -38,8 +56,8 @@ three JSON sections; services are auto-discovered:
 ## Installation
 
 ```sh
-mkp add powerdns-1.2.0.mkp
-mkp enable powerdns 1.2.0
+mkp add powerdns-1.2.1.mkp
+mkp enable powerdns 1.2.1
 ```
 
 Then:
@@ -74,10 +92,12 @@ powerdns/
 ├── lib/python3/cmk/base/cee/plugins/bakery/powerdns.py   # agent bakery (CEE)
 ├── doc/powerdns.cfg.example                         # sample config
 ├── powerdns.manifest.temp                           # MKP manifest
-└── powerdns-1.2.0.mkp                               # built package
+└── powerdns-1.2.1.mkp                               # built package
 ```
 
 Note: unlike the other packages in this repo, `powerdns` spans four MKP file
 categories (`cmk_addons_plugins`, `agents`, `lib`, `doc`). The repo's
-`tools/build_mkp.py` only packs `cmk_addons_plugins`, so the shipped `.mkp` is the
-upstream build; do not rebuild it with that script.
+`tools/build_mkp.py` only packs `cmk_addons_plugins`, so it cannot rebuild this
+package — the shipped `.mkp` is built with the Checkmk site `mkp` tool
+(`mkp package`), which handles all four categories. Do not rebuild it with
+`build_mkp.py`.
