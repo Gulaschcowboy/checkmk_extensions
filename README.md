@@ -5,6 +5,9 @@ per package. Each subdirectory contains the plugin source tree
 (`cmk_addons_plugins/<plugin>/…`), its `*.manifest.temp`, the built `.mkp`, and a
 README with install and build instructions.
 
+⚠️ Disclaimer: These are independent and private Checkmk extensions and not officially affiliated with or endorsed by Checkmk GmbH. 
+Any issues, bugs, or incompatibilities are not in the responsibility of Checkmk GmbH and should be reported to this project's issue tracker, not to Checkmk support.
+
 ## Packages
 
 | Package    | Description                                                        |
