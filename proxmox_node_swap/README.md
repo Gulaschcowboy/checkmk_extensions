@@ -65,18 +65,6 @@ chmod +x /usr/lib/check_mk_agent/plugins/proxmox_node_swap
 Then on the Checkmk server, rediscover the host — the `Proxmox Node Swap Usage`
 service appears.
 
-## Building from source
-
-The plug-in uses the single-part `cmk_addons_plugins` family layout, so the
-stdlib-only builder works:
-
-```bash
-python3 tools/build_mkp.py    # run from this directory
-python3 tools/verify_mkp.py . proxmox_node_swap-2.0.1.mkp proxmox_node_swap
-```
-
-Or rebuild on a site with `mkp package proxmox_node_swap`.
-
 ## License
 
 GPLv2.
