@@ -4,18 +4,24 @@ catalog: app/dnssec_health
 license: GPLv2
 distribution:
 description:
- This check reports the DNSSEC status of a domain, collected by the
- {dnssec_health} special agent. It determines whether the domain is signed
- (presence of DNSKEY records) and whether the configured recursive resolver
- validated the signatures (the AD bit in the response). The "validated" result
- therefore depends on the Checkmk server using a validating resolver.
+ This check reports the DNSSEC status of a domain as seen through one
+ specific recursive resolver, collected by the {dnssec_health} special agent.
+ It determines whether the domain is signed (presence of DNSKEY records) and
+ whether that resolver validated the signatures (the AD bit in the response).
+ The "validated" result therefore depends on the queried resolver performing
+ DNSSEC validation.
+
+ Each configured domain is checked against every configured DNS server, so a
+ separate service is created per domain/resolver combination. This makes it
+ possible to verify not only that a domain is DNSSEC-signed, but also that each
+ resolver actually validates the signatures.
 
  The plugin works on any domain, not only mail domains.
 
  States are configurable via the rule "DNSSEC status".
 
 item:
- The domain name.
+ The domain name and the queried resolver, formatted as {DOMAIN via RESOLVER}.
 
 discovery:
- One service is created for each configured domain.
+ One service is created for each configured domain/DNS-server combination.

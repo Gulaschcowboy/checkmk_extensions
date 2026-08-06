@@ -34,8 +34,11 @@ def parse_dnssec_health(string_table: list[list[str]]) -> Section:
         except ValueError:
             continue
         domain = data.get("domain")
-        if isinstance(domain, str):
-            section[domain] = data
+        if not isinstance(domain, str):
+            continue
+        nameserver = data.get("nameserver")
+        item = f"{domain} via {nameserver}" if nameserver else domain
+        section[item] = data
     return section
 
 
@@ -56,9 +59,11 @@ def check_dnssec_health(item: str, params: Mapping[str, Any], section: Section) 
 
     signed = data.get("signed")
     validated = data.get("validated")
+    nameserver = data.get("nameserver")
+    via = f" ({nameserver})" if nameserver else ""
 
     if data.get("error") and signed is None:
-        yield Result(state=State.UNKNOWN, summary=f"Query problem: {data['error']}")
+        yield Result(state=State.UNKNOWN, summary=f"Query problem{via}: {data['error']}")
         return
 
     if signed is False:
@@ -72,11 +77,14 @@ def check_dnssec_health(item: str, params: Mapping[str, Any], section: Section) 
         yield Result(state=State.OK, summary="Domain is DNSSEC-signed (DNSKEY present)")
 
     if validated:
-        yield Result(state=State.OK, summary="Resolver validated the signature (AD bit set)")
+        yield Result(
+            state=State.OK,
+            summary=f"Resolver{via} validated the signature (AD bit set)",
+        )
     else:
         yield Result(
             state=State(params["state_not_validated"]),
-            summary="Signed, but the resolver did not set the AD bit "
+            summary=f"Resolver{via} did not set the AD bit "
             "(non-validating resolver, or validation failure)",
         )
 

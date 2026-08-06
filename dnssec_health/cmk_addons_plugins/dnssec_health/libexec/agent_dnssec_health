@@ -4,11 +4,12 @@
 
 Reports the DNSSEC status of arbitrary domains (not necessarily mail domains):
   - signed:    whether the domain publishes DNSKEY records
-  - validated: whether the configured recursive resolver validated the
+  - validated: whether the queried recursive resolver validated the
                signatures (the AD / Authenticated Data bit in the response)
 
-The 'validated' result therefore depends on the Checkmk server using a
-DNSSEC-validating recursive resolver.
+Each configured domain is queried against every configured DNS server, so a
+separate record (domain x nameserver) is emitted. The 'validated' result
+therefore reflects whether that specific resolver performs DNSSEC validation.
 
 Implemented with the Python standard library only - no dnspython required.
 """
@@ -157,7 +158,7 @@ def system_nameservers() -> list[str]:
     return servers or ["127.0.0.1"]
 
 
-def collect_dnssec(resolver: Resolver, domain: str) -> dict:
+def collect_dnssec(resolver: Resolver, domain: str, nameserver: str) -> dict:
     signed = None
     dnskey_error = None
     try:
@@ -184,6 +185,7 @@ def collect_dnssec(resolver: Resolver, domain: str) -> dict:
 
     return {
         "domain": domain,
+        "nameserver": nameserver,
         "signed": signed,
         "validated": validated,
         "error": dnskey_error or soa_error,
@@ -211,12 +213,15 @@ def parse_arguments(argv: list[str]) -> Args:
 
 def main(argv: list[str] | None = None) -> int:
     args = parse_arguments(sys.argv[1:] if argv is None else argv)
-    resolver = Resolver(args.nameservers or system_nameservers(), timeout=args.timeout)
+    nameservers = args.nameservers or system_nameservers()
     try:
         if args.domains:
             sys.stdout.write("<<<dnssec_health:sep(0)>>>\n")
             for domain in args.domains:
-                sys.stdout.write(json.dumps(collect_dnssec(resolver, domain)) + "\n")
+                for nameserver in nameservers:
+                    resolver = Resolver([nameserver], timeout=args.timeout)
+                    record = collect_dnssec(resolver, domain, nameserver)
+                    sys.stdout.write(json.dumps(record) + "\n")
     except Exception as exc:  # pylint: disable=broad-except
         if args.debug:
             raise

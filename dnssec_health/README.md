@@ -4,16 +4,19 @@ Checkmk MKP that monitors the **DNSSEC status of arbitrary domains**. It runs en
 deployed on the monitored host, and it has **no Python dependencies** (pure
 standard library, no `dnspython`).
 
-For every configured domain one service `DNSSEC <domain>` is created, reporting:
+Every configured domain is checked **against every configured DNS server**, so
+one service `DNSSEC <domain> via <resolver>` is created per domain/resolver
+combination, reporting:
 
 | Aspect      | Meaning                                                                 |
 |-------------|-------------------------------------------------------------------------|
 | `signed`    | The domain publishes `DNSKEY` records (i.e. it is DNSSEC-signed)        |
-| `validated` | The configured recursive resolver set the `AD` (Authenticated Data) bit |
+| `validated` | That specific resolver set the `AD` (Authenticated Data) bit            |
 
-> The `validated` result therefore only carries meaning if the Checkmk server
-> (or the DNS server you configure in the rule) uses a **DNSSEC-validating**
-> recursive resolver.
+> Because each resolver is queried in isolation (no failover between servers),
+> the `validated` result tells you whether **that particular DNS server**
+> performs DNSSEC validation — not just whether the domain is signed. This makes
+> a non-validating or misconfigured resolver visible as its own failing service.
 
 ## How it works
 
@@ -43,7 +46,7 @@ cmk_addons_plugins/dnssec_health/
 
 ## Setup
 
-1. Install the package: `mkp add dnssec_health-1.0.0.mkp && mkp enable dnssec_health 1.0.0`.
+1. Install the package: `mkp add dnssec_health-1.1.0.mkp && mkp enable dnssec_health 1.1.0`.
 2. In the GUI: **Setup › Agents › Other integrations › DNSSEC status**.
 3. Add the domains to check. Optionally pin the recursive DNS servers to use
    (default: the resolvers from the Checkmk server's `/etc/resolv.conf`) and the

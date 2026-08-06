@@ -40,5 +40,5 @@ rule_spec_dnssec_health = CheckParameters(
     title=Title("DNSSEC status"),
     topic=Topic.APPLICATIONS,
     parameter_form=_parameter_form,
-    condition=HostAndItemCondition(item_title=Title("Domain")),
+    condition=HostAndItemCondition(item_title=Title("Domain via resolver")),
 )

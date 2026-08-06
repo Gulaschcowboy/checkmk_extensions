@@ -22,12 +22,14 @@ def _parameter_form() -> Dictionary:
     return Dictionary(
         help_text=Help(
             "Monitor the DNSSEC status of DNSSEC-enabled domains. "
-            "For each domain a 'DNSSEC <domain>' service is created reporting "
-            "whether the domain is signed (DNSKEY present) and whether the "
-            "configured resolver validated the signatures (AD bit). The "
-            "'validated' result requires the Checkmk server to use a "
-            "DNSSEC-validating recursive resolver. Data is collected via DNS "
-            "queries from the Checkmk site; no agent needs to be installed."
+            "Each configured domain is checked against every configured DNS "
+            "server, and a separate 'DNSSEC <domain> via <resolver>' service is "
+            "created per domain/resolver combination. Each service reports "
+            "whether the domain is signed (DNSKEY present) and whether that "
+            "resolver validated the signatures (AD bit). This verifies both that "
+            "a domain is DNSSEC-signed and that each resolver actually validates. "
+            "Data is collected via DNS queries from the Checkmk site; no agent "
+            "needs to be installed."
         ),
         elements={
             "domains": DictElement(
