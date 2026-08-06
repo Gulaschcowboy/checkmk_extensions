@@ -61,19 +61,6 @@ chmod +x /usr/lib/check_mk_agent/plugins/proxmox_node_swap
 Then on the Checkmk server, rediscover the host — the `Proxmox Node Swap Usage`
 service appears.
 
-## Migrating from the local check (≤ 1.1.2)
-
-The old version shipped a *local check* that produced the identical service
-name (`Proxmox Node Swap Usage`), so on the surface nothing changes. Differences:
-
-- Remove the old local check from the node
-  (`/usr/lib/check_mk_agent/local/proxmox_node_swap`) — the new agent plug-in
-  lives under `plugins/`, not `local/`.
-- Thresholds are no longer configured via `PVE_SWAP_WARN` / `PVE_SWAP_CRIT`
-  environment variables but via the WATO rule *"Proxmox node swap usage"*.
-- Perfdata metric names are unchanged (`swap_used_percent`, `swap_used_bytes`),
-  so historical graphs continue.
-
 ## Building from source
 
 The plug-in uses the single-part `cmk_addons_plugins` family layout, so the
@@ -88,5 +75,4 @@ Or rebuild on a site with `mkp package proxmox_node_swap`.
 
 ## License
 
-GPLv2. Original local check by Christian Wirtz; agent-based + bakery rework
-retains the original data-collection logic.
+GPLv2.
