@@ -83,15 +83,6 @@ The `PBS Backup Age` service has its own two rulesets:
     key with the usual Checkmk infix behaviour (`vm/` for all VMs,
     `vm/(9000|9001)` for a set, `^ct/300$` for exactly one).
 
-## Building from source
-
-From this directory:
-
-```sh
-python3 ../../tools/build_mkp.py
-python3 ../../tools/verify_mkp.py . proxmox_backup_server_api-1.1.3.mkp agent_proxmox_backup_server_api
-```
-
 ## Layout
 
 ```
