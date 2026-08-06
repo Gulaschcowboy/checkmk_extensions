@@ -40,6 +40,24 @@ def parse_proxmox_node_swap(string_table):
         return None
 
 
+def _levels_from_params(raw):
+    """Normalise the 'levels' parameter to a (warn, crit) tuple or None.
+
+    Accepts the SimpleLevels form ("fixed", (w, c)) / ("no_levels", None) as
+    well as the legacy bare (w, c) tuple.
+    """
+    if isinstance(raw, (tuple, list)) and len(raw) == 2:
+        tag, value = raw
+        if tag == "fixed" and isinstance(value, (tuple, list)) and len(value) == 2:
+            return (float(value[0]), float(value[1]))
+        if tag == "no_levels":
+            return None
+        # legacy bare (warn, crit)
+        if isinstance(tag, (int, float)) and isinstance(value, (int, float)):
+            return (float(tag), float(value))
+    return None
+
+
 agent_section_proxmox_node_swap = AgentSection(
     name="proxmox_node_swap",
     parse_function=parse_proxmox_node_swap,
@@ -73,7 +91,9 @@ def check_proxmox_node_swap(params, section):
     active = [g for g in guests if g.get("swap", 0) > 0]
 
     # ---- state from configurable percent level ---------------------------
-    levels = params.get("levels")  # (warn, crit) in percent, or None
+    # SimpleLevels stores ("fixed", (warn, crit)) or ("no_levels", None).
+    # Be tolerant of the legacy bare (warn, crit) tuple too.
+    levels = _levels_from_params(params.get("levels"))  # (warn, crit) or None
     if total == 0:
         yield Result(state=State.OK, summary="No swap configured on this node")
         yield Metric("swap_used_percent", 0.0, boundaries=(0, 100))
@@ -140,6 +160,6 @@ check_plugin_proxmox_node_swap = CheckPlugin(
     service_name="Proxmox Node Swap Usage",
     discovery_function=discover_proxmox_node_swap,
     check_function=check_proxmox_node_swap,
-    check_default_parameters={"levels": (50.0, 80.0)},
+    check_default_parameters={"levels": ("fixed", (50.0, 80.0))},
     check_ruleset_name="proxmox_node_swap",
 )

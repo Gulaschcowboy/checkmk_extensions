@@ -2,35 +2,31 @@
 # -*- coding: utf-8 -*-
 #
 # Agent Bakery ruleset for the "proxmox_node_swap" agent plug-in.
-# Decides whether (and how) the plug-in is deployed to Linux/Proxmox agents.
+# Decides whether the plug-in is deployed to Linux/Proxmox agents.
 
 from collections.abc import Mapping
 
 from cmk.rulesets.v1 import Help, Label, Title
 from cmk.rulesets.v1.form_specs import (
     BooleanChoice,
-    CascadingSingleChoice,
-    CascadingSingleChoiceElement,
     DefaultValue,
     DictElement,
     Dictionary,
-    FixedValue,
-    TimeMagnitude,
-    TimeSpan,
 )
 from cmk.rulesets.v1.rule_specs import AgentConfig, Topic
 
 
 def migrate_bakery_rule(value: object) -> Mapping[str, object]:
+    """Normalise to {"deploy": bool}, dropping any legacy caching config."""
     match value:
         case bool(deploy):
-            return {"deploy": deploy, "interval": ("cached", 60.0)}
+            return {"deploy": deploy}
         case None:
-            return {"deploy": False, "interval": ("cached", 60.0)}
+            return {"deploy": False}
         case dict() as d if "deploy" in d:
-            return d
+            return {"deploy": bool(d["deploy"])}
         case dict():
-            return {"deploy": True, **value}
+            return {"deploy": True}
     raise ValueError(value)
 
 
@@ -40,8 +36,8 @@ def _form_spec_agent_config_proxmox_node_swap() -> Dictionary:
         help_text=Help(
             "This will deploy the agent plug-in <tt>proxmox_node_swap</tt> for "
             "monitoring node swap usage and the top swap-consuming guests on a "
-            "Proxmox VE node. The plug-in can be run synchronously or "
-            "asynchronously (cached) in the background."
+            "Proxmox VE node. The plug-in runs synchronously with each agent "
+            "run (no caching)."
         ),
         elements={
             "deploy": DictElement(
@@ -49,32 +45,6 @@ def _form_spec_agent_config_proxmox_node_swap() -> Dictionary:
                 parameter_form=BooleanChoice(
                     label=Label("Deploy the Proxmox node swap plug-in"),
                     prefill=DefaultValue(True),
-                ),
-            ),
-            "interval": DictElement(
-                required=True,
-                parameter_form=CascadingSingleChoice(
-                    title=Title("Synchronicity / caching"),
-                    prefill=DefaultValue("cached"),
-                    elements=(
-                        CascadingSingleChoiceElement(
-                            name="uncached",
-                            title=Title("Run synchronously"),
-                            parameter_form=FixedValue(value=None),
-                        ),
-                        CascadingSingleChoiceElement(
-                            name="cached",
-                            title=Title("Run asynchronously (cached)"),
-                            parameter_form=TimeSpan(
-                                label=Label("Collection interval"),
-                                displayed_magnitudes=[
-                                    TimeMagnitude.MINUTE,
-                                    TimeMagnitude.SECOND,
-                                ],
-                                prefill=DefaultValue(60.0),
-                            ),
-                        ),
-                    ),
                 ),
             ),
         },

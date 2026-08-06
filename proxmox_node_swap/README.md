@@ -14,7 +14,7 @@ plug-in that collects raw data.
 | `agents/proxmox_node_swap` | Agent plug-in on the PVE node. Emits one JSON section `<<<proxmox_node_swap>>>` (node swap from `/proc/meminfo`, per-guest host swap: LXC via cgroup v2 `memory.swap.current`, QEMU via the VM process `VmSwap`). |
 | `agent_based/proxmox_node_swap.py` | Section parser + check plug-in. Service `Proxmox Node Swap Usage`. |
 | `rulesets/proxmox_node_swap.py` | Check-parameter ruleset — warn/crit levels on percent swap used. |
-| `rulesets/agent_config_proxmox_node_swap.py` | Agent-Bakery ruleset (deploy + sync/cached interval). |
+| `rulesets/agent_config_proxmox_node_swap.py` | Agent-Bakery ruleset (deploy on/off). |
 | `bakery/bakery_plugin_proxmox_node_swap.py` | Bakery plug-in (v2 API) that installs the agent plug-in. |
 | `graphing/swap.py` | Metric `swap_used_bytes` + a 0–100 % perf-o-meter on `swap_used_percent`. |
 | `checkman/proxmox_node_swap` | Man page. |
@@ -24,6 +24,10 @@ node's total swap in use (default WARN 50 % / CRIT 80 %). The summary lists the
 top swap-consuming guests; the details view lists the top ten plus a swap
 accounting breakdown (guests vs. host/system). LXC containers also show their
 usage relative to their own swap limit.
+
+The agent plug-in runs **synchronously** with each agent run — there is no
+caching. Any evaluation happens server-side in the check plug-in, so the node
+only ships raw values.
 
 ## Requirements
 
@@ -38,8 +42,8 @@ usage relative to their own swap limit.
 ## Installation
 
 ```bash
-mkp add proxmox_node_swap-2.0.0.mkp
-mkp enable proxmox_node_swap 2.0.0
+mkp add proxmox_node_swap-2.0.1.mkp
+mkp enable proxmox_node_swap 2.0.1
 ```
 
 ### Deploy the agent plug-in
@@ -68,7 +72,7 @@ stdlib-only builder works:
 
 ```bash
 python3 tools/build_mkp.py    # run from this directory
-python3 tools/verify_mkp.py . proxmox_node_swap-2.0.0.mkp proxmox_node_swap
+python3 tools/verify_mkp.py . proxmox_node_swap-2.0.1.mkp proxmox_node_swap
 ```
 
 Or rebuild on a site with `mkp package proxmox_node_swap`.
