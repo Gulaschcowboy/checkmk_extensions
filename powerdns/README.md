@@ -104,9 +104,7 @@ powerdns/
 └── powerdns-1.2.2.mkp                               # built package
 ```
 
-Note: unlike the other packages in this repo, `powerdns` spans four MKP file
-categories (`cmk_addons_plugins`, `agents`, `lib`, `doc`). The repo's
-`tools/build_mkp.py` only packs `cmk_addons_plugins`, so it cannot rebuild this
-package — the shipped `.mkp` is built with the Checkmk site `mkp` tool
-(`mkp package`), which handles all four categories. Do not rebuild it with
-`build_mkp.py`.
+Note: `powerdns` spans four MKP file categories (`cmk_addons_plugins`, `agents`,
+`lib`, `doc`). Rebuild it with the Checkmk site `mkp` tool (`mkp package`), which
+handles all four categories — simple `cmk_addons_plugins`-only packers will
+silently drop the agent plugin, bakery, and doc files.
