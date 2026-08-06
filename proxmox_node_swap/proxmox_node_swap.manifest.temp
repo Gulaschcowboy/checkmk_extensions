@@ -19,7 +19,7 @@
                                   'proxmox_node_swap/checkman/proxmox_node_swap']},
  'name': 'proxmox_node_swap',
  'title': 'Proxmox Node Swap Usage (agent-based + bakery)',
- 'version': '2.0.1',
+ 'version': '2.0.2',
  'version.min_required': '2.3.0',
  'version.packaged': 'hermes',
  'version.usable_until': None}

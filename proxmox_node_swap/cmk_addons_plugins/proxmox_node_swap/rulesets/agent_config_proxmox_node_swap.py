@@ -52,7 +52,7 @@ def _form_spec_agent_config_proxmox_node_swap() -> Dictionary:
 
 
 rule_spec_agent_config_proxmox_node_swap = AgentConfig(
-    title=Title("Proxmox node swap (Linux)"),
+    title=Title("Proxmox node swap"),
     name="proxmox_node_swap",
     topic=Topic.OPERATING_SYSTEM,
     parameter_form=_form_spec_agent_config_proxmox_node_swap,

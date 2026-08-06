@@ -42,14 +42,14 @@ only ships raw values.
 ## Installation
 
 ```bash
-mkp add proxmox_node_swap-2.0.1.mkp
-mkp enable proxmox_node_swap 2.0.1
+mkp add proxmox_node_swap-2.0.2.mkp
+mkp enable proxmox_node_swap 2.0.2
 ```
 
 ### Deploy the agent plug-in
 
 **With the bakery (recommended):** create a rule under
-*Setup → Agents → Agent rules → Proxmox node swap (Linux)*, bake and sign the
+*Setup → Agents → Agent rules → Proxmox node swap*, bake and sign the
 agent, and roll it out to the Proxmox node(s).
 
 **Manually (any edition):**
