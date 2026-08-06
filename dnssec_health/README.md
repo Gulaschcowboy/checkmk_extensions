@@ -1,7 +1,6 @@
 # DNSSEC health — Checkmk Special Agent
 
-Checkmk MKP that monitors the **DNSSEC status of arbitrary domains** (not only
-mail domains). It runs entirely from the Checkmk site — no agent needs to be
+Checkmk MKP that monitors the **DNSSEC status of arbitrary domains**. It runs entirely from the Checkmk site — no agent needs to be
 deployed on the monitored host, and it has **no Python dependencies** (pure
 standard library, no `dnspython`).
 
