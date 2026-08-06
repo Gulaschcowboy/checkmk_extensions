@@ -86,19 +86,6 @@ Notes:
 - Privilege ↔ endpoint mapping verified against OPNsense core `ACL.xml`
   (`OPNsense/Core/ACL/ACL.xml`) on the `master` branch.
 
-## Build from source
-
-The build/verify scripts live in the Hermes `checkmk-mkp-plugins` skill and are
-stdlib-only (no `mkp` binary required):
-
-```
-python3 build_mkp.py      # reads opnsense.manifest.temp -> opnsense-<version>.mkp
-python3 verify_mkp.py . opnsense-<version>.mkp <any-file-to-assert-present>
-```
-
-Bump `version` in `opnsense.manifest.temp` and keep the `files` list in sync when
-adding or removing plugin files.
-
 ## Verified against
 
 - Checkmk 2.5.0p10 (Enterprise/CRE cmk_addons layout)
