@@ -1,0 +1,25 @@
+{'author': 'Christian Wirtz',
+ 'description': 'Agent-based monitoring of Proxmox VE node swap usage plus the '
+                'top swap-consuming guests. The agent plug-in collects raw '
+                'data (node swap from /proc/meminfo, per-guest host swap for '
+                'LXC via cgroup v2 memory.swap.current and for QEMU via the VM '
+                "process VmSwap); the server-side check derives the service "
+                'state from configurable percent levels, lists the top guests '
+                'and provides swap accounting. Includes a check-parameter '
+                'ruleset, an Agent Bakery ruleset + bakery plug-in for '
+                'automated deployment, graphing and a perf-o-meter. This is '
+                'the agent-based + bakery successor of the former local check.',
+ 'download_url': 'https://github.com/Gulaschcowboy/checkmk_extensions',
+ 'files': {'cmk_addons_plugins': ['proxmox_node_swap/agents/proxmox_node_swap',
+                                  'proxmox_node_swap/agent_based/proxmox_node_swap.py',
+                                  'proxmox_node_swap/rulesets/proxmox_node_swap.py',
+                                  'proxmox_node_swap/rulesets/agent_config_proxmox_node_swap.py',
+                                  'proxmox_node_swap/bakery/bakery_plugin_proxmox_node_swap.py',
+                                  'proxmox_node_swap/graphing/swap.py',
+                                  'proxmox_node_swap/checkman/proxmox_node_swap']},
+ 'name': 'proxmox_node_swap',
+ 'title': 'Proxmox Node Swap Usage (agent-based + bakery)',
+ 'version': '2.0.0',
+ 'version.min_required': '2.3.0',
+ 'version.packaged': 'hermes',
+ 'version.usable_until': None}

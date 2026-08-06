@@ -1,0 +1,28 @@
+title: Proxmox Node Swap Usage
+agents: linux
+catalog: os/kernel
+license: GPLv2
+distribution: check_mk
+description:
+ This check monitors the overall swap usage of a Proxmox VE node and
+ identifies the virtual machines (QEMU) and containers (LXC) that are
+ responsible for the host swap being consumed.
+
+ The service state is derived from configurable warning/critical levels on
+ the percentage of the node's total swap that is in use. The summary lists
+ the top swap-consuming guests; the details view lists the top ten guests
+ plus a swap accounting breakdown (guests vs. host/system).
+
+ The data is collected by the agent plug-in {proxmox_node_swap}, which reads
+ {/proc/meminfo}, the cgroup v2 values under {/sys/fs/cgroup/lxc/} and the
+ {VmSwap} of the running QEMU processes. The plug-in can be deployed via the
+ Agent Bakery.
+
+ Levels can be configured with the rule "Proxmox node swap usage".
+
+item:
+ None.
+
+discovery:
+ One service {Proxmox Node Swap Usage} is created on every host that sends
+ the {proxmox_node_swap} agent section.

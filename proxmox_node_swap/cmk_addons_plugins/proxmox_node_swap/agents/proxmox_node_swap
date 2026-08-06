@@ -1,0 +1,151 @@
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+#
+# Checkmk agent plug-in: Proxmox node swap usage + per-guest swap consumers.
+# ---------------------------------------------------------------------------
+# This is the AGENT side of the "proxmox_node_swap" plug-in. It only COLLECTS
+# raw data and prints it as a Checkmk agent section; all thresholding, state
+# and output formatting is done by the server-side check plug-in.
+#
+# It emits one JSON document under:
+#     <<<proxmox_node_swap:sep(0)>>>
+#
+# Payload:
+#   {
+#     "swap_total": <bytes>,
+#     "swap_used":  <bytes>,
+#     "guests": [
+#        {"type": "CT"|"VM", "id": "123", "name": "...",
+#         "swap": <bytes>, "limit": <bytes|null>},
+#        ...
+#     ]
+#   }
+#
+# Deployment: drop into the agent's plug-in directory on the Proxmox node
+#   (bakery installs it to /usr/lib/check_mk_agent/plugins/proxmox_node_swap).
+# The agent runs as root, which is required to read cgroup / proc / /etc/pve.
+#
+# Requires python3 (standard on Proxmox VE). Stdlib only.
+# ---------------------------------------------------------------------------
+import glob
+import json
+import os
+
+
+def node_swap():
+    """Return (total_bytes, used_bytes) for the node swap."""
+    total = free = 0
+    try:
+        with open("/proc/meminfo") as fh:
+            for line in fh:
+                if line.startswith("SwapTotal:"):
+                    total = int(line.split()[1]) * 1024
+                elif line.startswith("SwapFree:"):
+                    free = int(line.split()[1]) * 1024
+    except OSError:
+        pass
+    return total, max(total - free, 0)
+
+
+def _conf_value(path, key):
+    """First 'key: value' from a pve config file, or None."""
+    try:
+        with open(path) as fh:
+            for line in fh:
+                if line.startswith(key + ":"):
+                    return line.split(":", 1)[1].strip()
+    except OSError:
+        pass
+    return None
+
+
+def _lxc_swap_limit(ctid, cgdir):
+    """Container's swap limit in bytes, or None if unlimited/disabled/unknown."""
+    # cgroup v2: memory.swap.max is a byte value or the literal "max".
+    try:
+        with open("%s/memory.swap.max" % cgdir) as fh:
+            raw = fh.read().strip()
+        if raw != "max":
+            v = int(raw)
+            return v if v > 0 else None
+    except (OSError, ValueError):
+        pass
+    # fall back to the configured 'swap:' value (MiB) from the pve config
+    conf = _conf_value("/etc/pve/lxc/%s.conf" % ctid, "swap")
+    if conf is not None:
+        try:
+            v = int(conf) * 1024 * 1024
+            return v if v > 0 else None
+        except ValueError:
+            pass
+    return None
+
+
+def lxc_consumers():
+    """LXC containers as [{'type','id','name','swap','limit'}, ...]."""
+    out = []
+    for path in glob.glob("/sys/fs/cgroup/lxc/*/memory.swap.current"):
+        cgdir = os.path.dirname(path)
+        ctid = path.split("/")[5]
+        if not ctid.isdigit():
+            continue
+        try:
+            with open(path) as fh:
+                swap = int(fh.read().strip())
+        except (OSError, ValueError):
+            continue
+        limit = _lxc_swap_limit(ctid, cgdir)
+        name = _conf_value("/etc/pve/lxc/%s.conf" % ctid, "hostname") or ("ct" + ctid)
+        out.append({"type": "CT", "id": ctid, "name": name, "swap": swap, "limit": limit})
+    return out
+
+
+def _proc_vmswap(pid):
+    try:
+        with open("/proc/%d/status" % pid) as fh:
+            for line in fh:
+                if line.startswith("VmSwap:"):
+                    return int(line.split()[1]) * 1024
+    except (OSError, ValueError):
+        return None
+    return 0
+
+
+def qemu_consumers():
+    """Running QEMU VMs as [{'type','id','name','swap','limit'}, ...].
+
+    A VM has no per-guest swap limit (the host may page out any of its RAM),
+    so 'limit' is always None for VMs.
+    """
+    out = []
+    for pidfile in glob.glob("/run/qemu-server/*.pid"):
+        vmid = os.path.basename(pidfile)[:-4]
+        if not vmid.isdigit():
+            continue
+        try:
+            with open(pidfile) as fh:
+                pid = int(fh.read().strip())
+        except (OSError, ValueError):
+            continue
+        swap = _proc_vmswap(pid)
+        if swap is None:          # VM not actually running any more
+            continue
+        name = _conf_value("/etc/pve/qemu-server/%s.conf" % vmid, "name") or ("vm" + vmid)
+        out.append({"type": "VM", "id": vmid, "name": name, "swap": swap, "limit": None})
+    return out
+
+
+def main():
+    total, used = node_swap()
+    guests = qemu_consumers() + lxc_consumers()
+    payload = {
+        "swap_total": total,
+        "swap_used": used,
+        "guests": guests,
+    }
+    print("<<<proxmox_node_swap:sep(0)>>>")
+    print(json.dumps(payload))
+
+
+if __name__ == "__main__":
+    main()
