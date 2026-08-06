@@ -103,8 +103,3 @@ powerdns/
 ├── powerdns.manifest.temp                           # MKP manifest
 └── powerdns-1.2.2.mkp                               # built package
 ```
-
-Note: `powerdns` spans four MKP file categories (`cmk_addons_plugins`, `agents`,
-`lib`, `doc`). Rebuild it with the Checkmk site `mkp` tool (`mkp package`), which
-handles all four categories — simple `cmk_addons_plugins`-only packers will
-silently drop the agent plugin, bakery, and doc files.
