@@ -51,7 +51,7 @@ metric_proxmox_backup_server_api_last_age = metrics.Metric(
 )
 
 metric_proxmox_backup_server_api_backup_age = metrics.Metric(
-    name="backup_age",
+    name="proxmox_backup_server_api_backup_age",
     title=Title("Age of oldest backup group"),
     unit=UNIT_SECONDS,
     color=metrics.Color.PURPLE,

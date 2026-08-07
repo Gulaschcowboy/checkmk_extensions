@@ -24,7 +24,7 @@ description:
  expressions matched against the group key with the usual Checkmk infix
  behaviour ({vm/} for all VMs, {vm/(9000|9001)} for a set, {^ct/300$} for
  exactly one). The oldest backup age
- in the item is exported as the {backup_age} metric.
+ in the item is exported as the {proxmox_backup_server_api_backup_age} metric.
 
 item:
  Either a datastore (for example {backup1}), aggregating the freshest backup of

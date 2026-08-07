@@ -231,7 +231,7 @@ def check_proxmox_backup_server_api_snapshots(
 
     if oldest_age is not None:
         levels = (warn, crit) if warn is not None else None
-        yield Metric("backup_age", oldest_age, levels=levels)
+        yield Metric("proxmox_backup_server_api_backup_age", oldest_age, levels=levels)
 
 
 check_plugin_proxmox_backup_server_api_snapshots = CheckPlugin(

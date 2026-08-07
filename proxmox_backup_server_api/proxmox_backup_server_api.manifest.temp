@@ -32,7 +32,7 @@
                                   'proxmox_backup_server_api/checkman/proxmox_backup_server_api_snapshots']},
  'name': 'proxmox_backup_server_api',
  'title': 'Proxmox Backup Server (REST API)',
- 'version': '1.1.3',
+ 'version': '1.1.4',
  'version.min_required': '2.3.0b1',
  'version.packaged': 'hermes',
  'version.usable_until': None}

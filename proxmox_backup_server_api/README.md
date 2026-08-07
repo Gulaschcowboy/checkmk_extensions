@@ -42,8 +42,8 @@ Authorization: PBSAPIToken=<token-id>:<token-secret>
 ## Installation
 
 ```sh
-mkp add proxmox_backup_server_api-1.1.3.mkp
-mkp enable proxmox_backup_server_api 1.1.3
+mkp add proxmox_backup_server_api-1.1.4.mkp
+mkp enable proxmox_backup_server_api 1.1.4
 ```
 
 Then in Checkmk:
@@ -94,5 +94,5 @@ cmk_addons_plugins/proxmox_backup_server_api/
   rulesets/           special-agent + check-parameter rulesets
   server_side_calls/  builds the agent command line
 proxmox_backup_server_api.manifest.temp
-proxmox_backup_server_api-1.1.3.mkp
+proxmox_backup_server_api-1.1.4.mkp
 ```
