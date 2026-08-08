@@ -1,0 +1,181 @@
+#!/usr/bin/env python3
+"""Checkmk special agent for Proxmox Mail Gateway (PMG) via its REST API.
+
+Unlike Proxmox VE, PMG has no API-token mechanism (/access/users/{id}/token
+does not exist). Authentication is ticket-based:
+
+    1. POST /api2/json/access/ticket with username[@realm] + password
+       -> {"ticket": ..., "CSRFPreventionToken": ..., ...}
+    2. Send the ticket back as Cookie: PMGAuthCookie=<ticket> on every
+       subsequent request. CSRFPreventionToken is only required for
+       state-changing (POST/PUT/DELETE) calls; this agent is read-only.
+
+The web/API port is hard-coded to 8006 in PMG itself (no config option).
+
+Emits Checkmk agent sections:
+
+    <<<pmg_statistics:sep(0)>>>   {"mail": {...}, "rejectcount": [...]}
+    <<<pmg_queue:sep(0)>>>        [{"queue": "deferred", "count": N}, ...]
+    <<<pmg_quarantine:sep(0)>>>   {"spam": {...}, "virus": {...}}
+    <<<pmg_clamav:sep(0)>>>       [{"type": ..., "version": ..., ...}, ...]
+    <<<pmg_spamassassin:sep(0)>>> [{"channel": ..., "update_avail": ...}, ...]
+    <<<pmg_node:sep(0)>>>         {"status": {...}, "subscription": {...},
+                                   "updates": [...], "certificates": [...]}
+
+A read-only PMG user (role "Audit") is sufficient for all of these
+endpoints.
+"""
+import argparse
+import json
+import ssl
+import sys
+from urllib.request import Request, urlopen
+from urllib.error import HTTPError, URLError
+
+
+QUEUES = ("deferred", "active", "incoming", "hold")
+
+
+def parse_args(argv):
+    p = argparse.ArgumentParser(description="Checkmk PMG special agent")
+    p.add_argument("--username", required=True,
+                   help="PMG username, e.g. 'checkmk' (realm via --realm)")
+    p.add_argument("--password", required=True, help="PMG password")
+    p.add_argument("--realm", default="pmg",
+                   help="PMG authentication realm (default: pmg)")
+    p.add_argument("--port", type=int, default=8006,
+                   help="HTTPS port (default 8006, hard-coded in PMG)")
+    p.add_argument("--no-cert-check", action="store_true",
+                   help="Disable TLS certificate verification (self-signed)")
+    p.add_argument("--timeout", type=int, default=20,
+                   help="Per-request timeout (s)")
+    p.add_argument("hostname", help="PMG host / address")
+    return p.parse_args(argv)
+
+
+def make_context(no_cert_check):
+    ctx = ssl.create_default_context()
+    if no_cert_check:
+        ctx.check_hostname = False
+        ctx.verify_mode = ssl.CERT_NONE
+    return ctx
+
+
+class PMGClient:
+    def __init__(self, host, port, username, password, realm, ctx, timeout):
+        if ":" in host and not host.startswith("["):
+            host = "[%s]" % host
+        self.base = "https://%s:%d/api2/json" % (host, port)
+        self.ctx = ctx
+        self.timeout = timeout
+        self.ticket = None
+        self._login(username, password, realm)
+
+    def _login(self, username, password, realm):
+        url = "%s/access/ticket" % self.base
+        payload = {
+            "username": username,
+            "password": password,
+            "realm": realm,
+        }
+        data = json.dumps(payload).encode("utf-8")
+        req = Request(url, data=data, method="POST",
+                      headers={"Content-Type": "application/json"})
+        with urlopen(req, context=self.ctx, timeout=self.timeout) as resp:
+            body = json.loads(resp.read().decode("utf-8"))
+        result = body.get("data", {})
+        self.ticket = result.get("ticket")
+        if not self.ticket:
+            raise ValueError("PMG login did not return a ticket")
+
+    def call(self, path):
+        url = "%s/%s" % (self.base, path)
+        req = Request(url, method="GET")
+        req.add_header("Cookie", "PMGAuthCookie=%s" % self.ticket)
+        with urlopen(req, context=self.ctx, timeout=self.timeout) as resp:
+            body = json.loads(resp.read().decode("utf-8"))
+        return body.get("data")
+
+    def node_name(self):
+        nodes = self.call("nodes")
+        if isinstance(nodes, list) and nodes:
+            return nodes[0].get("node", "localhost")
+        return "localhost"
+
+
+def emit(section, payload):
+    sys.stdout.write("<<<%s:sep(0)>>>\n" % section)
+    sys.stdout.write(json.dumps(payload) + "\n")
+
+
+def safe_call(client, path):
+    try:
+        return client.call(path)
+    except (HTTPError, URLError, ValueError) as exc:
+        return {"_error": str(exc)}
+
+
+def main(argv=None):
+    args = parse_args(argv if argv is not None else sys.argv[1:])
+    ctx = make_context(args.no_cert_check)
+    try:
+        client = PMGClient(args.hostname, args.port, args.username,
+                           args.password, args.realm, ctx, args.timeout)
+    except (HTTPError, URLError, ValueError) as exc:
+        # Without a ticket nothing else can be fetched -- emit error
+        # sections for everything so checks surface UNKNOWN instead of
+        # going stale/missing.
+        err = {"_error": "PMG login failed: %s" % exc}
+        for section in ("pmg_statistics", "pmg_queue", "pmg_quarantine",
+                        "pmg_clamav", "pmg_spamassassin", "pmg_node"):
+            emit(section, err)
+        return 1
+
+    node = client.node_name()
+
+    # --- Statistics (mail counters + reject counters) ---
+    statistics = {
+        "mail": safe_call(client, "statistics/mail"),
+        "rejectcount": safe_call(client, "statistics/rejectcount"),
+    }
+    emit("pmg_statistics", statistics)
+
+    # --- Postfix queue depths ---
+    queue_data = []
+    for queue in QUEUES:
+        result = safe_call(client, "nodes/%s/postfix/queue/%s" % (node, queue))
+        if isinstance(result, dict) and "_error" in result:
+            queue_data.append({"queue": queue, "_error": result["_error"]})
+        else:
+            count = len(result) if isinstance(result, list) else 0
+            queue_data.append({"queue": queue, "count": count})
+    emit("pmg_queue", queue_data)
+
+    # --- Quarantine status (spam + virus) ---
+    quarantine = {
+        "spam": safe_call(client, "quarantine/spamstatus"),
+        "virus": safe_call(client, "quarantine/virusstatus"),
+    }
+    emit("pmg_quarantine", quarantine)
+
+    # --- ClamAV virus database status ---
+    clamav = safe_call(client, "nodes/%s/clamav/database" % node)
+    emit("pmg_clamav", clamav)
+
+    # --- SpamAssassin rules status ---
+    spamassassin = safe_call(client, "nodes/%s/spamassassin/rules" % node)
+    emit("pmg_spamassassin", spamassassin)
+
+    # --- Node status, subscription, updates, certificates ---
+    node_info = {
+        "status": safe_call(client, "nodes/%s/status" % node),
+        "subscription": safe_call(client, "nodes/%s/subscription" % node),
+        "updates": safe_call(client, "nodes/%s/apt/update" % node),
+        "certificates": safe_call(client, "nodes/%s/certificates/info" % node),
+    }
+    emit("pmg_node", node_info)
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

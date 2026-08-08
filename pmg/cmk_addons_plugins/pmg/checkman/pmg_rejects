@@ -1,0 +1,22 @@
+title: Proxmox Mail Gateway: SMTP Early Rejects
+agents: pmg
+catalog: app/pmg
+license: GPLv2
+distribution: check_mk
+description:
+ Monitors early SMTP-level rejects reported by Proxmox Mail Gateway's
+ {/statistics/rejectcount} REST endpoint: mails rejected via RBL
+ (realtime blackhole list) lookups and PREGREET (talking before the
+ SMTP greeting, a classic spambot fingerprint). Both counters are
+ summed over the reporting window and compared against optional
+ WARN/CRIT thresholds.
+
+ A sudden spike can indicate an ongoing spam/scan wave; a sudden drop
+ to zero can indicate a broken RBL lookup (e.g. DNS resolution
+ failure) rather than an actual improvement.
+
+item:
+ None, one service per host.
+
+discovery:
+ One service is created if reject-count data is available from the API.

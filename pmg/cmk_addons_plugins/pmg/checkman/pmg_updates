@@ -1,0 +1,16 @@
+title: Proxmox Mail Gateway: Pending Updates
+agents: pmg
+catalog: app/pmg
+license: GPLv2
+distribution: check_mk
+description:
+ Monitors the number of pending Debian/APT package updates via
+ {/nodes/{node}/apt/update}, the same mechanism used by the PMG web
+ GUI's update notification. Configurable WARN/CRIT thresholds on the
+ update count (default: WARN at 1, CRIT unset).
+
+item:
+ None, one service per host.
+
+discovery:
+ One service is created if update data is available from the API.

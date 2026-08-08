@@ -1,0 +1,16 @@
+title: Proxmox Mail Gateway: Certificate Expiry
+agents: pmg
+catalog: app/pmg
+license: GPLv2
+distribution: check_mk
+description:
+ Monitors the remaining validity of each TLS certificate installed on
+ the node via {/nodes/{node}/certificates/info} (subject, issuer,
+ notAfter timestamp). WARN/CRIT thresholds apply to the remaining
+ validity time (default: WARN at 30 days, CRIT at 7 days remaining).
+
+item:
+ The certificate subject (or filename if no subject is reported).
+
+discovery:
+ One service per certificate reported by the API is created.

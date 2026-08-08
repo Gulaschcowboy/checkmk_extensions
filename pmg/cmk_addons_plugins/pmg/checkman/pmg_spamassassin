@@ -1,0 +1,16 @@
+title: Proxmox Mail Gateway: SpamAssassin Rules
+agents: pmg
+catalog: app/pmg
+license: GPLv2
+distribution: check_mk
+description:
+ Monitors the update status of each SpamAssassin rule channel via
+ {/nodes/{node}/spamassassin/rules}. Reports the currently installed
+ rule-set version and whether an update is available; the state
+ reported when an update is pending is configurable (default: WARN).
+
+item:
+ The rule channel name, e.g. {sa-update}.
+
+discovery:
+ One service per rule channel reported by the API is created.

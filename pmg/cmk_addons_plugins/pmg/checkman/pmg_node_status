@@ -1,0 +1,17 @@
+title: Proxmox Mail Gateway: Node Status
+agents: pmg
+catalog: app/pmg
+license: GPLv2
+distribution: check_mk
+description:
+ Basic node health via {/nodes/{node}/status}: system uptime, cluster
+ database sync status ({insync}), and the currently running kernel
+ release. On a PMG cluster, a node that falls out of sync typically
+ means replication between nodes has failed and configuration changes
+ on one node won't reach the others.
+
+item:
+ None, one service per host.
+
+discovery:
+ One service is created if node status is available from the API.

@@ -1,0 +1,40 @@
+{'author': 'Alex Wilms',
+ 'description': 'Special agent for Proxmox Mail Gateway (PMG) via its REST '
+                'API. Monitors mail throughput and spam/virus ratio, SMTP '
+                'early rejects (RBL/PREGREET), Postfix queue depth (per '
+                'queue), spam and virus quarantine size, ClamAV database '
+                'freshness, SpamAssassin rule update status, node status/'
+                'uptime, subscription status, pending package updates and '
+                'certificate expiry. PMG has no API-token mechanism, so '
+                'authentication uses a ticket obtained via username/'
+                'password (POST /access/ticket); use a dedicated '
+                'unprivileged user with role "Audit".',
+ 'download_url': 'https://github.com/adminguru/checkmk-pmg',
+ 'files': {'cmk_addons_plugins': ['pmg/libexec/agent_pmg',
+                                  'pmg/agent_based/pmg_statistics.py',
+                                  'pmg/agent_based/pmg_queue.py',
+                                  'pmg/agent_based/pmg_quarantine.py',
+                                  'pmg/agent_based/pmg_clamav.py',
+                                  'pmg/agent_based/pmg_spamassassin.py',
+                                  'pmg/agent_based/pmg_node.py',
+                                  'pmg/rulesets/pmg.py',
+                                  'pmg/rulesets/pmg_params.py',
+                                  'pmg/server_side_calls/pmg.py',
+                                  'pmg/graphing/pmg.py',
+                                  'pmg/checkman/pmg_mail',
+                                  'pmg/checkman/pmg_rejects',
+                                  'pmg/checkman/pmg_queue',
+                                  'pmg/checkman/pmg_quarantine_spam',
+                                  'pmg/checkman/pmg_quarantine_virus',
+                                  'pmg/checkman/pmg_clamav',
+                                  'pmg/checkman/pmg_spamassassin',
+                                  'pmg/checkman/pmg_node_status',
+                                  'pmg/checkman/pmg_subscription',
+                                  'pmg/checkman/pmg_updates',
+                                  'pmg/checkman/pmg_certificates']},
+ 'name': 'pmg',
+ 'title': 'Proxmox Mail Gateway (REST API)',
+ 'version': '1.0.3',
+ 'version.min_required': '2.3.0b1',
+ 'version.packaged': 'hermes',
+ 'version.usable_until': None}

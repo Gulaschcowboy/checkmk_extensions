@@ -1,0 +1,20 @@
+title: Proxmox Mail Gateway: Spam Quarantine
+agents: pmg
+catalog: app/pmg
+license: GPLv2
+distribution: check_mk
+description:
+ Monitors the size (mail count and estimated disk usage) of the spam
+ quarantine via {/quarantine/spamstatus}, plus the average spam score
+ of quarantined mail. Useful to catch unusually large quarantine
+ growth (spam wave, or users no longer reviewing/releasing quarantined
+ mail) and disk-space pressure from quarantine storage.
+
+ Optional WARN/CRIT thresholds apply to the mail count.
+
+item:
+ None, one service per host.
+
+discovery:
+ One service is created if spam quarantine status is available from
+ the API.

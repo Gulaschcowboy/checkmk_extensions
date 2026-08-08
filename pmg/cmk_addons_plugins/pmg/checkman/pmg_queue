@@ -1,0 +1,21 @@
+title: Proxmox Mail Gateway: Postfix Queue
+agents: pmg
+catalog: app/pmg
+license: GPLv2
+distribution: check_mk
+description:
+ Monitors the depth of each Postfix mail queue (deferred, active,
+ incoming, hold) via {/nodes/{node}/postfix/queue/{queue}}. A growing
+ "deferred" queue usually means downstream delivery is failing (DNS,
+ greylisting, a full-disk target, or a blocked relay); a growing
+ "hold" queue means messages are stuck due to policy/content-filter
+ action.
+
+ WARN/CRIT thresholds are configurable per queue via the ruleset
+ "PMG Postfix queue depth".
+
+item:
+ The queue name: {deferred}, {active}, {incoming}, or {hold}.
+
+discovery:
+ One service per queue name is created.

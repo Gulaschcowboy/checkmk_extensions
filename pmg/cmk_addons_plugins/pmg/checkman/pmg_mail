@@ -1,0 +1,20 @@
+title: Proxmox Mail Gateway: Mail Statistics
+agents: pmg
+catalog: app/pmg
+license: GPLv2
+distribution: check_mk
+description:
+ Monitors overall mail throughput and the spam/virus ratio reported by
+ Proxmox Mail Gateway's {/statistics/mail} REST endpoint over the
+ default 24-hour reporting window: incoming/outgoing mail counts, spam
+ count, virus count, and average per-mail processing time.
+
+ The junk ratio (spam + virus mails as a percentage of incoming mail)
+ is checked against configurable WARN/CRIT thresholds -- a sudden jump
+ usually indicates either a spam wave or a broken content filter.
+
+item:
+ None, one service per host.
+
+discovery:
+ One service is created if mail statistics are available from the API.

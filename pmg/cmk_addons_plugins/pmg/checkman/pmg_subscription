@@ -1,0 +1,18 @@
+title: Proxmox Mail Gateway: Subscription
+agents: pmg
+catalog: app/pmg
+license: GPLv2
+distribution: check_mk
+description:
+ Reports the Proxmox subscription status via
+ {/nodes/{node}/subscription}: subscription level and next due date
+ if one is active. Having no subscription is a normal, expected state
+ for community installations and is not flagged as a problem;
+ WARN is only raised for an invalid/suspended paid subscription.
+
+item:
+ None, one service per host.
+
+discovery:
+ One service is created if subscription data is available from the
+ API.

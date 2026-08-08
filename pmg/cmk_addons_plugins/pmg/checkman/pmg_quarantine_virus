@@ -1,0 +1,18 @@
+title: Proxmox Mail Gateway: Virus Quarantine
+agents: pmg
+catalog: app/pmg
+license: GPLv2
+distribution: check_mk
+description:
+ Monitors the size (mail count and estimated disk usage) of the virus
+ quarantine via {/quarantine/virusstatus}. Since a healthy mail flow
+ should rarely quarantine actual viruses, the default thresholds
+ already WARN/CRIT at a low count (default: 1) so that any virus
+ catch is noticed promptly.
+
+item:
+ None, one service per host.
+
+discovery:
+ One service is created if virus quarantine status is available from
+ the API.

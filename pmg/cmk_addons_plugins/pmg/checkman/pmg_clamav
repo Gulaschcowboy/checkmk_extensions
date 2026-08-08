@@ -1,0 +1,18 @@
+title: Proxmox Mail Gateway: ClamAV Database
+agents: pmg
+catalog: app/pmg
+license: GPLv2
+distribution: check_mk
+description:
+ Monitors the age of each ClamAV virus signature database (main,
+ daily, bytecode, ...) via {/nodes/{node}/clamav/database}. The build
+ timestamp reported by ClamAV is compared against configurable
+ WARN/CRIT age thresholds (default: 2 days / 7 days) -- an aging
+ database usually means {clamav-freshclam} has stopped updating
+ (network issue, broken mirror, disk full).
+
+item:
+ The database type, e.g. {main}, {daily}, {bytecode}.
+
+discovery:
+ One service per database type reported by the API is created.
