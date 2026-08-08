@@ -8,8 +8,8 @@ issues are welcome.
 # openWB wallbox (simpleAPI, read-only)
 
 Checkmk special agent that monitors an [openWB](https://openwb.de/) wallbox
-controller through its read-only simpleAPI HTTP endpoint. Never issues write
-requests to the wallbox.
+controller through its read-only simpleAPI HTTP endpoint.
+Not meant as a replacement for the Linux agent, but as an addition.
 
 ## What it monitors
 
