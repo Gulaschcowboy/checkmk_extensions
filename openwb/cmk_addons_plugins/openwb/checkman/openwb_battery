@@ -1,0 +1,26 @@
+title: openWB: Battery storage
+agents: openwb
+catalog: hw/other
+license: GPLv2
+distribution: check_mk
+
+description:
+ This check monitors an individual home battery storage system reported
+ by an openWB wallbox controller. It reports fault state, state of
+ charge, current charge/discharge power and daily imported/exported
+ (charged/discharged) energy.
+
+ Data is collected via the special agent {agent_openwb}, which polls the
+ read-only openWB simpleAPI HTTP endpoint
+ ({/openWB/simpleAPI/simpleapi.php}) and auto-discovers configured
+ batteries by probing a range of numeric IDs.
+
+item:
+ The battery ID as reported by the openWB simpleAPI.
+
+discovery:
+ One service is created per battery ID that the agent discovers.
+
+params:
+ The rule "openWB battery state of charge" allows configuring lower
+ WARN/CRIT levels for the battery state of charge.

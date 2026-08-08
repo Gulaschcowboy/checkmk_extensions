@@ -1,0 +1,26 @@
+title: openWB: Grid counter
+agents: openwb
+catalog: hw/other
+license: GPLv2
+distribution: check_mk
+
+description:
+ This check monitors an individual grid/energy counter reported by an
+ openWB wallbox controller (e.g. the household grid connection meter).
+ It reports fault state, current grid power (positive = import, negative
+ = export/feed-in), grid frequency and daily imported/exported energy.
+
+ Data is collected via the special agent {agent_openwb}, which polls the
+ read-only openWB simpleAPI HTTP endpoint
+ ({/openWB/simpleAPI/simpleapi.php}) and auto-discovers configured
+ counters by probing a range of numeric IDs.
+
+item:
+ The counter ID as reported by the openWB simpleAPI.
+
+discovery:
+ One service is created per counter ID that the agent discovers.
+
+params:
+ The rule "openWB grid counter power" allows configuring upper WARN/CRIT
+ levels for the grid import power.

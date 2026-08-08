@@ -1,0 +1,200 @@
+#!/usr/bin/env python3
+"""Checkmk special agent for openWB wallboxes (simpleAPI, read-only).
+
+Polls the openWB simpleAPI HTTP endpoint
+(http://<host>/openWB/simpleAPI/simpleapi.php) and auto-discovers which
+chargepoints, counters, batteries and PV inverters actually exist by probing
+a range of numeric IDs — the simpleAPI has no "list all devices" endpoint,
+so every configured slot (0..max-id) is queried and empty/stub slots are
+filtered out again.
+
+Discovery heuristic (verified against a real openWB instance):
+  * chargepoint slots that don't exist return an empty JSON array `[]`;
+    a real chargepoint returns a JSON object.
+  * counter/battery/pv slots that don't exist return a stub object whose
+    "fault_str" is the plain string "Kein Fehler". A real, configured
+    device's "fault_str" is JSON-double-encoded, e.g. '"Kein Fehler."'
+    (with quotes and trailing period), or an actual fault message. Any
+    fault_str different from the exact literal "Kein Fehler" is therefore
+    treated as "device present".
+
+Like Checkmk's own "df" agent section, this agent always reports the full
+range on every run — Checkmk itself is what decides which of those items
+become services (via discovery) and which ones a regular check cycle keeps
+monitoring (via the host's autochecks). The agent has no way to tell
+apart a discovery run from a regular check cycle (Checkmk passes special
+agents the same arguments and environment either way), so it must not try
+to guess: doing so would risk newly-added hardware never being picked up
+by a later "Discover services" run.
+
+Querying every ID on every check cycle costs something (empty/non-existent
+openWB slots have been measured taking ~1-6s each to answer), so all probes
+for a given device type run in parallel via a thread pool — that keeps a
+full 0..19 scan across all 4 device types safely under Checkmk's default
+special agent timeout (measured: ~12s total, vs. ~112s sequential).
+
+Only GET requests are used — this agent is 100% read-only. All queried
+simpleAPI parameters are documented at:
+https://wiki.openwb.de/doku.php?id=openwb:vc:2.2.0:simpleapi
+"""
+import argparse
+import json
+import sys
+from concurrent.futures import ThreadPoolExecutor
+from urllib.request import Request, urlopen
+from urllib.error import HTTPError, URLError
+from urllib.parse import urlencode
+
+STUB_FAULT_STR = "Kein Fehler"
+MAX_WORKERS = 10
+
+
+def parse_args(argv):
+    p = argparse.ArgumentParser(description="Checkmk openWB special agent")
+    p.add_argument("--port", type=int, default=80, help="HTTP(S) port (default 80)")
+    p.add_argument("--https", action="store_true", help="Use https:// instead of http://")
+    p.add_argument("--no-cert-check", action="store_true",
+                   help="Disable TLS certificate verification (self-signed, only with --https)")
+    p.add_argument("--username", default=None, help="Optional openWB username")
+    p.add_argument("--password", default=None, help="Optional openWB password")
+    p.add_argument("--timeout", type=int, default=20, help="Per-request timeout (s)")
+    p.add_argument("--max-chargepoint-id", type=int, default=9,
+                   help="Highest chargepoint ID to probe (default 9)")
+    p.add_argument("--max-counter-id", type=int, default=19,
+                   help="Highest counter ID to probe (default 19)")
+    p.add_argument("--max-battery-id", type=int, default=19,
+                   help="Highest battery ID to probe (default 19)")
+    p.add_argument("--max-pv-id", type=int, default=19,
+                   help="Highest PV inverter ID to probe (default 19)")
+    p.add_argument("hostname", help="openWB host / address")
+    return p.parse_args(argv)
+
+
+class OpenWBClient:
+    def __init__(self, host, port, https, no_cert_check, username, password, timeout):
+        scheme = "https" if https else "http"
+        if ":" in host and not host.startswith("["):
+            host = "[%s]" % host
+        self.base = "%s://%s:%d/openWB/simpleAPI/simpleapi.php" % (scheme, host, port)
+        self.timeout = timeout
+        self.ctx = None
+        if https:
+            import ssl
+            self.ctx = ssl.create_default_context()
+            if no_cert_check:
+                self.ctx.check_hostname = False
+                self.ctx.verify_mode = ssl.CERT_NONE
+        self.username = username
+        self.password = password
+
+    def get(self, params):
+        query = dict(params)
+        if self.username is not None:
+            query["username"] = self.username
+        if self.password is not None:
+            query["password"] = self.password
+        url = "%s?%s" % (self.base, urlencode(query))
+        req = Request(url, method="GET")
+        with urlopen(req, context=self.ctx, timeout=self.timeout) as resp:
+            return json.loads(resp.read().decode("utf-8"))
+
+
+def _is_real_device(payload, key):
+    """A non-existent counter/battery/pv slot always returns the exact stub
+    fault_str "Kein Fehler". Anything else (quoted/JSON-encoded no-error
+    string, or a real fault message) means the device is actually present."""
+    if not isinstance(payload, dict):
+        return False
+    entry = payload.get(key)
+    if not isinstance(entry, dict):
+        return False
+    return entry.get("fault_str") != STUB_FAULT_STR
+
+
+def discover_chargepoints(client, max_id):
+    ids = list(range(0, max_id + 1))
+
+    def fetch(cp_id):
+        try:
+            payload = client.get({"get_chargepoint_all": cp_id})
+        except (HTTPError, URLError, ValueError):
+            return cp_id, None
+        # Non-existent chargepoints answer with an empty JSON array.
+        if isinstance(payload, dict) and payload:
+            key = "chargepoint_%d" % cp_id
+            if key in payload:
+                return cp_id, payload[key]
+        return cp_id, None
+
+    found = {}
+    if not ids:
+        return found
+    with ThreadPoolExecutor(max_workers=min(MAX_WORKERS, len(ids))) as pool:
+        for cp_id, data in pool.map(fetch, ids):
+            if data is not None:
+                found[cp_id] = data
+    return found
+
+
+def discover_devices(client, param, key_prefix, max_id):
+    ids = list(range(0, max_id + 1))
+
+    def fetch(dev_id):
+        try:
+            payload = client.get({param: dev_id})
+        except (HTTPError, URLError, ValueError):
+            return dev_id, None
+        key = "%s_%d" % (key_prefix, dev_id)
+        if _is_real_device(payload, key):
+            return dev_id, payload[key]
+        return dev_id, None
+
+    found = {}
+    if not ids:
+        return found
+    with ThreadPoolExecutor(max_workers=min(MAX_WORKERS, len(ids))) as pool:
+        for dev_id, data in pool.map(fetch, ids):
+            if data is not None:
+                found[dev_id] = data
+    return found
+
+
+def emit(section, payload):
+    sys.stdout.write("<<<%s:sep(0)>>>\n" % section)
+    sys.stdout.write(json.dumps(payload) + "\n")
+
+
+def main(argv=None):
+    args = parse_args(argv if argv is not None else sys.argv[1:])
+    client = OpenWBClient(args.hostname, args.port, args.https, args.no_cert_check,
+                          args.username, args.password, args.timeout)
+
+    try:
+        chargepoints = discover_chargepoints(client, args.max_chargepoint_id)
+    except (HTTPError, URLError, ValueError) as exc:
+        chargepoints = {"_error": str(exc)}
+    emit("openwb_chargepoint", chargepoints)
+
+    try:
+        counters = discover_devices(client, "get_counter", "counter", args.max_counter_id)
+    except (HTTPError, URLError, ValueError) as exc:
+        counters = {"_error": str(exc)}
+    emit("openwb_counter", counters)
+
+    try:
+        batteries = discover_devices(client, "battery", "battery", args.max_battery_id)
+    except (HTTPError, URLError, ValueError) as exc:
+        batteries = {"_error": str(exc)}
+    emit("openwb_battery", batteries)
+
+    try:
+        pv = discover_devices(client, "pv", "pv", args.max_pv_id)
+    except (HTTPError, URLError, ValueError) as exc:
+        pv = {"_error": str(exc)}
+    emit("openwb_pv", pv)
+
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

@@ -1,0 +1,26 @@
+title: openWB: Chargepoint status
+agents: openwb
+catalog: hw/other
+license: GPLv2
+distribution: check_mk
+
+description:
+ This check monitors an individual chargepoint of an openWB wallbox
+ controller. It reports fault state, plug/charge state, connected vehicle,
+ charge mode, charging power, vehicle state of charge and total/daily
+ energy charged.
+
+ Data is collected via the special agent {agent_openwb}, which polls the
+ read-only openWB simpleAPI HTTP endpoint
+ ({/openWB/simpleAPI/simpleapi.php}) and auto-discovers configured
+ chargepoints by probing a range of numeric IDs.
+
+item:
+ The chargepoint ID as reported by the openWB simpleAPI.
+
+discovery:
+ One service is created per chargepoint ID that the agent discovers.
+
+params:
+ The rule "openWB chargepoint power" allows configuring upper WARN/CRIT
+ levels for the charging power.

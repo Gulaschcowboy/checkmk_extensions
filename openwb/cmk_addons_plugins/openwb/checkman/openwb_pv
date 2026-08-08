@@ -1,0 +1,24 @@
+title: openWB: PV inverter
+agents: openwb
+catalog: hw/other
+license: GPLv2
+distribution: check_mk
+
+description:
+ This check monitors an individual PV inverter reported by an openWB
+ wallbox controller. It reports fault state, current generation power
+ and today's/this month's/this year's yield.
+
+ Data is collected via the special agent {agent_openwb}, which polls the
+ read-only openWB simpleAPI HTTP endpoint
+ ({/openWB/simpleAPI/simpleapi.php}) and auto-discovers configured PV
+ inverters by probing a range of numeric IDs.
+
+item:
+ The PV inverter ID as reported by the openWB simpleAPI.
+
+discovery:
+ One service is created per PV inverter ID that the agent discovers.
+
+params:
+ none
