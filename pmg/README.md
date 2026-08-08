@@ -67,5 +67,4 @@ performs read-only GET calls.
 ## Verified against
 
 - Checkmk 2.5.0p10 (Enterprise/CRE cmk_addons layout)
-
-Target: Proxmox Mail Gateway node reachable at `mail.adminguru.org:8006`.
+- Proxmox Mail Gateway 8.x, REST API on port 8006
