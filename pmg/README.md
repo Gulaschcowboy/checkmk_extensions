@@ -5,6 +5,8 @@ API. PMG has no API-token mechanism, so authentication uses a ticket obtained
 via username/password (`POST /access/ticket`) — use a dedicated, unprivileged
 audit user with the built-in **Audit** role, not an admin account.
 
+Not meant as an replacement for the Linux agent, but as an addition.
+
 | Check plugin           | Services                                                        |
 |-------------------------|------------------------------------------------------------------|
 | `pmg_mail`              | Mail throughput and spam/virus junk ratio                       |
