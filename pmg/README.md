@@ -24,6 +24,9 @@ Not meant as an replacement for the Linux agent, but as an addition.
 All warn/crit thresholds are configurable via WATO rules under
 *Setup → Service monitoring rules* (one ruleset per check listed above).
 
+<img width="1292" height="451" alt="image" src="https://github.com/user-attachments/assets/49e33c19-ae67-4b04-a338-f81be016cee3" />
+
+
 ## Layout
 
 ```
