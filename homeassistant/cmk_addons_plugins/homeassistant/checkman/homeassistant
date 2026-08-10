@@ -1,0 +1,48 @@
+homeassistant
+title: Home Assistant
+agents: homeassistant
+catalog: app/homeassistant
+license: GPLv2
+distribution:
+description:
+ This special agent queries a Home Assistant instance and creates
+ Checkmk piggyback hosts grouped by Home Assistant area/room.
+
+ Entity states are fetched via the Home Assistant REST API
+ ({/api/states}); device, entity and area registries are fetched via
+ the Home Assistant WebSocket API ({/api/websocket}) using a pure
+ Python stdlib WebSocket client (no extra dependency).
+
+ Entities are grouped by their effective area (entity-level area
+ assignment wins, otherwise inherited from the entity's device) and
+ emitted as piggyback data for one generated host per area, named
+ {<host_prefix><area-slug>} (default prefix {ha-}). Entities without
+ an area are grouped under {<host_prefix>unassigned}.
+
+ A "Home Assistant API" service on the queried host reports the
+ special agent's own health: REST/WebSocket success, number of
+ selected/emitted entities, number of generated piggyback hosts and
+ query duration. It goes WARN when limits (max hosts / max entities)
+ were reached or other non-fatal issues occurred, and CRIT when the
+ REST or WebSocket query failed entirely.
+
+ Configuration options include: entity domains to import (comma
+ separated, e.g. {sensor,binary_sensor}), optional include/exclude
+ regular expressions matched against entity ID and friendly name,
+ whether to ignore entities in state {unavailable}, a stale-data
+ warning threshold, and safety limits on the number of generated
+ hosts and imported entities to protect the Checkmk service budget.
+
+ Configure via Setup > Agents > Other integrations > Home Assistant.
+ A Home Assistant long-lived access token is required and can be
+ stored in the Checkmk password store.
+
+item:
+ None. One "Home Assistant API" service is created per configured
+ host.
+
+discovery:
+ One "Home Assistant API" service is discovered on the queried host.
+ The generated piggyback hosts must be created (or auto-registered)
+ separately; their entities are discovered as regular services on
+ those piggyback hosts.
