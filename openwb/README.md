@@ -16,6 +16,9 @@ Not meant as a replacement for the Linux agent, but as an addition.
 The agent auto-discovers all devices by probing numeric device IDs (the
 simpleAPI has no built-in device-listing call) — no manual ID configuration
 needed:
+<img width="1669" height="146" alt="image" src="https://github.com/user-attachments/assets/5a3d1473-dd10-4df4-86a4-45704dfd9bb5" />
+
+
 
 | Service | Description |
 |---|---|
