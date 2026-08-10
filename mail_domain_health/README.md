@@ -18,6 +18,8 @@ host. Configure it via *Setup → Agents → Other integrations → Mail domain 
 
 Nine independently switchable checks (SPF and DMARC on by default), one service
 each:
+<img width="1378" height="184" alt="image" src="https://github.com/user-attachments/assets/d5047c02-082f-40ad-8572-2a69b0b6a0ad" />
+
 
 | Service | Description |
 |---|---|
