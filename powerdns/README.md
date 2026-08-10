@@ -39,6 +39,9 @@ repo.
 An agent plugin (`agents/plugins/powerdns`) runs on the monitored host and emits
 three JSON sections; services are auto-discovered:
 
+<img width="1247" height="576" alt="image" src="https://github.com/user-attachments/assets/a8f48b41-5f38-44fe-86e7-e4aca76f06fe" />
+
+
 | Service | Description |
 |---|---|
 | `PowerDNS Authoritative Server: Status` | Daemon status and security-status |
