@@ -6,9 +6,7 @@
 > it for production monitoring yet.
 
 Checkmk special-agent plugin that monitors the **DNS-based mail security posture**
-of one or more domains, plus a bundled overview dashboard. Author: Christian Wirtz
-(upstream). This subdirectory ships version **1.4.0**, redistributed **unchanged**
-from the upstream `.mkp`; the packaging `download_url` points at this repo.
+of one or more domains, plus a bundled overview dashboard.
 
 The special agent uses only the **Python standard library** (DNS, plus HTTPS/SMTP
 for some optional features) — there is **no agent deployment** on the monitored
