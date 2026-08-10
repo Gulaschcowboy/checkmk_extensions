@@ -4,6 +4,9 @@ Checkmk MKP that monitors OPNsense firewalls through the OPNsense REST API
 (no SNMP). It polls the firewall over HTTPS using an API key/secret pair and
 produces the following services:
 
+<img width="1399" height="1126" alt="image" src="https://github.com/user-attachments/assets/12469cf3-f18a-4c41-a196-bd54de66aea4" />
+
+
 | Check plugin        | Services                                              |
 |---------------------|-------------------------------------------------------|
 | `opnsense_firmware` | Firmware version and pending-update status            |
