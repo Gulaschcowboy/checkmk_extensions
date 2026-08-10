@@ -9,6 +9,8 @@ through its REST API (default port 8007, API-token authentication).
 ## What it monitors
 
 One host runs the special agent against the PBS API; services are auto-discovered:
+<img width="1350" height="447" alt="image" src="https://github.com/user-attachments/assets/fb744c77-40af-4a54-8080-ebe113011f38" />
+
 
 | Service | Description |
 |---|---|
