@@ -4,11 +4,6 @@ Checkmk check plugins that monitor the **PowerDNS Authoritative Server** and the
 **PowerDNS Recursor** through their built-in HTTP APIs, with a control-socket
 fallback (`pdns_control` / `rec_control`) when the API is unavailable.
 
-Author: Christian Wirtz (upstream). This subdirectory ships version **1.2.2**,
-rebuilt with the Checkmk site `mkp` tool after bug fixes were applied to the
-upstream sources (see Changelog); the packaging `download_url` points at this
-repo.
-
 ## Changelog
 
 ### 1.2.2
