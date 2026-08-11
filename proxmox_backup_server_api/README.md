@@ -35,16 +35,6 @@ One host runs the special agent against the PBS API; services are auto-discovere
   <img width="800" height="291" alt="image" src="https://github.com/user-attachments/assets/c71ec53d-052f-47b4-8441-b4214d2e919c" />
 
 
-## Authentication note
-
-PBS uses a different HTTP auth header than Proxmox VE. The special agent sends:
-
-```
-Authorization: PBSAPIToken=<token-id>:<token-secret>
-```
-
-(Using `PVEAPIToken` — the PVE form — fails with "authentication failed".)
-
 ## Installation
 
 ```sh
