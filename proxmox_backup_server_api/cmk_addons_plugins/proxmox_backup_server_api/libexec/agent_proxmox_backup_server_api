@@ -215,7 +215,13 @@ def main(argv=None):
     if not v_err and isinstance(verify, list):
         for j in verify:
             jid = j.get("id")
-            last = _newest_task(tasks, "verificationjob", [jid])
+            store = j.get("store")
+            # PBS records verify task worker_id as "<store>:<id>", not the
+            # bare job id.
+            worker_ids = [jid]
+            if store and jid:
+                worker_ids.append("%s:%s" % (store, jid))
+            last = _newest_task(tasks, "verificationjob", worker_ids)
             verify_jobs.append({
                 "id": jid,
                 "store": j.get("store"),
@@ -230,7 +236,16 @@ def main(argv=None):
     if not sy_err and isinstance(sync, list):
         for j in sync:
             jid = j.get("id")
-            last = _newest_task(tasks, "syncjob", [jid])
+            remote = j.get("remote")
+            remote_store = j.get("remote-store")
+            store = j.get("store")
+            # PBS records sync task worker_id as
+            # "<remote>:<remote-store>:<store>::<id>", not the bare job id.
+            worker_ids = [jid]
+            if remote and remote_store and store and jid:
+                worker_ids.append(
+                    "%s:%s:%s::%s" % (remote, remote_store, store, jid))
+            last = _newest_task(tasks, "syncjob", worker_ids)
             sync_jobs.append({
                 "id": jid,
                 "store": j.get("store"),
