@@ -26,8 +26,8 @@ One host runs the special agent against the PBS API; services are auto-discovere
 ## Requirements
 
 - Checkmk 2.3.0b1 or newer (uses the `cmk_addons_plugins` API v2 layout).
-- A PBS User AND API token with Roles `Audit` and also RemoteAudit, if sync jobs should be monitored.
-  Both on path `/` and with propagation set to yes. See Screenshot below.
+- A PBS User **AND** API token with Roles `Audit` and also `RemoteAudit`, if sync jobs should be monitored as well.
+  Both on path `/` and with propagation set to yes. See screenshot below.
   Create them under
   **Configuration > Access Control > API Token** in the PBS UI.
   Then add the token and it's permission under **Configuration > Access Control > Permissions**
