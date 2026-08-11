@@ -37,15 +37,3 @@ mkp add <package>-<version>.mkp
 mkp enable <package> <version>
 ```
 
-## Layout convention
-
-```
-<package>/
-├── cmk_addons_plugins/<package>/   # plugin source (agent_based, rulesets, etc.)
-├── <package>.manifest.temp         # MKP manifest (files list + version)
-├── <package>-<version>.mkp         # built package
-└── README.md
-```
-
-Modern Checkmk (2.3+) addon layout: plugins install to
-`~/local/lib/python3/cmk_addons/plugins/<package>/` on a site.
