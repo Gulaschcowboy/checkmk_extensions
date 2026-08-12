@@ -1,0 +1,41 @@
+title: ZFS ARC cache usage
+agents: linux
+catalog: os/storage
+license: GPLv2
+distribution:
+description:
+ Monitors the ZFS Adaptive Replacement Cache (ARC) on a Linux host running
+ OpenZFS. The plugin reads {/proc/spl/kstat/zfs/arcstats} and reports:
+
+ - ARC size as a percentage of its configured maximum ({c_max}).
+ - ARC size as a percentage of total system RAM.
+ - The cache hit ratio ({hits} / ({hits} + {misses})).
+ - The {memory_throttle_count} counter (nonzero indicates the kernel throttled
+   ARC growth due to memory pressure).
+
+ The check goes WARN if the ARC exceeds 90% of {c_max}, if it uses more than
+ 40% of total RAM, if the hit ratio drops below 85%, or if any memory
+ throttling has occurred. It goes CRIT if RAM usage exceeds 60% or the hit
+ ratio drops below 75%.
+
+ The output also includes a heuristic recommendation (e.g. reduce or increase
+ {zfs_arc_max}) based on the observed sizing and hit ratio, intended as a
+ starting point for manual tuning — it is not applied automatically.
+
+ This is implemented as a Checkmk **local check**
+ ({agents/custom/zfs_arc/lib/local/zfs_arc.sh}), deployed manually to
+ {$MK_LOCALDIR} (or {/usr/lib/check_mk_agent/local/}) on the monitored host. A
+ companion plugin
+ ({agents/custom/zfs_arc/lib/plugins/zfs_arc_cache}) emits the raw
+ {arcstats} kstat values as a separate {<<<zfs_arc_cache>>>} section for
+ anyone who wants to build additional checks against the raw counters; no
+ check plugin in this package currently consumes that section.
+
+ On hosts without ZFS (missing {/proc/spl/kstat/zfs/arcstats}) the local
+ check reports UNKNOWN and does nothing else.
+
+item:
+ None. The check produces a single service {ZFS ARC}.
+
+discovery:
+ None — the local check output IS the service; no separate discovery step.
