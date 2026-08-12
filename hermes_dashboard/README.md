@@ -8,6 +8,8 @@ its web dashboard's public REST API (`hermes dashboard`, default port 9119).
 
 One host runs the special agent against the dashboard's `GET /api/status`
 endpoint; services are auto-discovered:
+<img width="816" height="260" alt="image" src="https://github.com/user-attachments/assets/5ad35b6d-e32f-49d6-93c0-dbff9ad9b057" />
+
 
 | Service | Description |
 |---|---|
