@@ -6,9 +6,8 @@
                 'decimal-separator bugs); the server-side check derives the '
                 'service state from three independently configurable percent '
                 'levels (ARC vs. zfs_arc_max, ARC vs. RAM, hit ratio) plus an '
-                'unconditional WARN on ARC memory throttling, and shows a '
-                'heuristic zfs_arc_max tuning suggestion. On hosts without a '
-                'ZFS ARC, the plug-in emits nothing, so no service is '
+                'unconditional WARN on ARC memory throttling. On hosts '
+                'without a ZFS ARC, the plug-in emits nothing, so no service is '
                 'discovered there. Includes a check-parameter ruleset, an '
                 'Agent Bakery ruleset + bakery plug-in for automated '
                 'deployment, and graphing (perf-o-meter + graph). This is the '
@@ -23,7 +22,7 @@
                                   'zfs_arc/checkman/zfs_arc']},
  'name': 'zfs_arc',
  'title': 'ZFS ARC cache usage (agent-based + bakery)',
- 'version': '1.0.0',
+ 'version': '1.0.1',
  'version.min_required': '2.3.0',
  'version.packaged': 'hermes',
  'version.usable_until': None}

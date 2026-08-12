@@ -14,8 +14,6 @@
 #   * state from configurable percent levels on ARC-vs-max, ARC-vs-RAM and
 #     (inverted) hit ratio, plus an unconditional WARN on ARC memory
 #     throttling
-#   * a heuristic zfs_arc_max tuning recommendation in the details (advisory
-#     only -- never influences the service state)
 #   * metrics: zfs_arc_used_percent, zfs_arc_ram_percent, zfs_arc_hit_ratio,
 #     zfs_arc_size_bytes
 # ---------------------------------------------------------------------------
@@ -90,30 +88,6 @@ def _state_lower(value, levels):
     return State.OK
 
 
-def _to_gb(num_bytes):
-    return num_bytes / 1024.0 / 1024.0 / 1024.0
-
-
-def _recommendation(arc_pct, ram_pct, hit_ratio, throttle, c_max, mem_total):
-    """Heuristic zfs_arc_max tuning hint. Advisory only, never sets state."""
-    arc_max_gb = _to_gb(c_max)
-    ram_total_gb = _to_gb(mem_total)
-
-    if throttle > 0:
-        target_gb = max(int(ram_total_gb / 4), 1)
-        return "memory pressure detected -> reduce zfs_arc_max to ~%dG" % target_gb
-    if ram_pct > 50:
-        target_gb = max(int(ram_total_gb / 4), 1)
-        return "ARC too large for system -> reduce zfs_arc_max to ~%dG" % target_gb
-    if ram_pct > 35 and hit_ratio > 95:
-        target_gb = max(int(arc_max_gb - 1), 1)
-        return "ARC oversized but not more useful -> reduce zfs_arc_max to ~%dG" % target_gb
-    if hit_ratio < 80 and ram_pct < 30:
-        target_gb = int(arc_max_gb + 1)
-        return "cache inefficient -> increase zfs_arc_max to ~%dG" % target_gb
-    return "ARC sizing looks fine"
-
-
 def check_zfs_arc(params, section):
     if section is None:
         return
@@ -179,14 +153,12 @@ def check_zfs_arc(params, section):
             notice="ARC memory throttle events: %d (host under memory pressure)" % throttle,
         )
 
-    recommendation = _recommendation(arc_pct, ram_pct, hit_ratio, throttle, c_max, mem_total)
     lines = [
         "ARC size            : %s" % render.bytes(size),
         "ARC max (c_max)     : %s" % (render.bytes(c_max) if c_max else "n/a"),
         "RAM total           : %s" % (render.bytes(mem_total) if mem_total else "n/a"),
         "Hit ratio           : %.1f%% (%d hits / %d misses)" % (hit_ratio, hits, misses),
         "Memory throttle     : %d" % throttle,
-        "Tuning suggestion   : %s" % recommendation,
     ]
     yield Result(state=State.OK, notice="\n".join(lines))
 

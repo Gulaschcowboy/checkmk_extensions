@@ -16,10 +16,6 @@ description:
  host is under memory pressure severe enough for ZFS to throttle cache
  growth.
 
- The service details additionally show a heuristic {zfs_arc_max} tuning
- suggestion (e.g. reduce/increase the target size). This suggestion is
- advisory only and never influences the service state.
-
  The data is collected by the agent plug-in {zfs_arc}, which reads
  {/proc/spl/kstat/zfs/arcstats} and {/proc/meminfo} and emits raw numbers
  only. On a host without a ZFS ARC (module not loaded / no pool imported),
