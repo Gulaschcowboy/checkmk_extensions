@@ -1,10 +1,9 @@
 # Proxmox Backup Server (REST API)
 
-### This is not meant as a replacement for monitoring via the Checkmk agent, but as an addition to fetch more information.
-
 Checkmk special agent + check plugins that monitor a
 [Proxmox Backup Server](https://www.proxmox.com/en/proxmox-backup-server) (PBS)
 through its REST API (default port 8007, API-token authentication).
+Not meant as a replacement for monitoring via the Checkmk agent, but as an addition.
 
 ## What it monitors
 
