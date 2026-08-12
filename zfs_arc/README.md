@@ -23,8 +23,8 @@ so no service is discovered there.
 ## Installation
 
 ```bash
-mkp add zfs_arc-1.0.0.mkp
-mkp enable zfs_arc 1.0.0
+mkp add zfs_arc-1.0.1.mkp
+mkp enable zfs_arc 1.0.1
 ```
 
 ### Deploy the agent plug-in
@@ -48,6 +48,9 @@ service appears (only on hosts that actually have a ZFS ARC).
 
 ## Changelog
 
+- **1.0.1** — Removed the heuristic `zfs_arc_max` tuning suggestion. The
+  check is now purely state-based (levels-driven OK/WARN/CRIT), with no
+  advisory recommendation text.
 - **1.0.0** — Rebuilt from scratch as an agent-based + bakery plug-in
   (previously a shell-based local check). Fixes the
   locale-dependent hit-ratio threshold bug by moving all arithmetic from
