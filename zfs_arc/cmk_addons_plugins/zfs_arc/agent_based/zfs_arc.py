@@ -134,23 +134,29 @@ def check_zfs_arc(params, section):
     levels_ram_pct = _levels_from_params(params.get("levels_ram_pct"))
     levels_hit_ratio = _levels_from_params(params.get("levels_hit_ratio"))
 
-    state = State.worst(
-        _state_upper(arc_pct, levels_arc_pct),
-        _state_upper(ram_pct, levels_ram_pct),
-        _state_lower(hit_ratio, levels_hit_ratio),
-        State.WARN if throttle > 0 else State.OK,
-    )
+    state_arc_pct = _state_upper(arc_pct, levels_arc_pct)
+    state_ram_pct = _state_upper(ram_pct, levels_ram_pct)
+    state_hit_ratio = _state_lower(hit_ratio, levels_hit_ratio)
 
+    # Split into one Result per sub-metric so Checkmk attaches the WARN/CRIT
+    # marker to the value that actually breached its levels, instead of
+    # always tacking it onto the end of a single combined summary line.
     yield Result(
-        state=state,
-        summary="ARC %s of %s (%.0f%% of max, %.0f%% of RAM), hit ratio %.1f%%"
+        state=state_arc_pct,
+        summary="ARC %s of %s (%.0f%% of max)"
         % (
             render.bytes(size),
             render.bytes(c_max) if c_max else "n/a",
             arc_pct,
-            ram_pct,
-            hit_ratio,
         ),
+    )
+    yield Result(
+        state=state_ram_pct,
+        summary="%.0f%% of RAM" % ram_pct,
+    )
+    yield Result(
+        state=state_hit_ratio,
+        summary="hit ratio %.1f%%" % hit_ratio,
     )
 
     yield Metric(
@@ -192,7 +198,7 @@ check_plugin_zfs_arc = CheckPlugin(
     check_function=check_zfs_arc,
     check_default_parameters={
         "levels_arc_pct": ("fixed", (90.0, 97.0)),
-        "levels_ram_pct": ("fixed", (40.0, 60.0)),
+        "levels_ram_pct": ("fixed", (80.0, 90.0)),
         "levels_hit_ratio": ("fixed", (85.0, 75.0)),
     },
     check_ruleset_name="zfs_arc",

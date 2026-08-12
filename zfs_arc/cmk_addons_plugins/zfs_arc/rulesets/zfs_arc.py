@@ -19,7 +19,7 @@ from cmk.rulesets.v1.rule_specs import CheckParameters, HostCondition, Topic
 
 _DEFAULTS = {
     "levels_arc_pct": (90.0, 97.0),
-    "levels_ram_pct": (40.0, 60.0),
+    "levels_ram_pct": (80.0, 90.0),
     "levels_hit_ratio": (85.0, 75.0),
 }
 

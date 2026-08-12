@@ -54,7 +54,7 @@ def _form_spec_agent_config_zfs_arc() -> Dictionary:
 
 
 rule_spec_agent_config_zfs_arc = AgentConfig(
-    title=Title("ZFS ARC cache usage"),
+    title=Title("ZFS ARC cache usage (OpenZFS on Linux)"),
     name="zfs_arc",
     topic=Topic.OPERATING_SYSTEM,
     parameter_form=_form_spec_agent_config_zfs_arc,
