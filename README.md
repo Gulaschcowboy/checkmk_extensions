@@ -27,7 +27,6 @@ instance were performed by experienced Users. Use at your own risk.
 | [`mail_domain_health`](mail_domain_health/) | ⚠️ **WIP** — DNS-based mail-domain security posture via a stdlib special agent (no agent on host): SPF, DMARC, DKIM, DNSBL/RBL, domain blacklists, MTA-STS/TLS-RPT, DANE/TLSA, BIMI and RDAP registration expiry, plus an overview dashboard. Incompatible changes expected. |
 | [`openwb`](openwb/) | ⚠️ **WIP** — openWB wallbox monitoring via its read-only simpleAPI HTTP endpoint (auto-discovers chargepoints, counters, batteries, PV) — charging power/state, grid import/export, battery SoC, PV yield. |
 | [`homeassistant`](homeassistant/) | Home Assistant special agent — reads sensor states via the REST API and area/device metadata via the WebSocket API, groups entities by area into piggyback hosts (`ha-<area>`), with configurable domain filters and safety limits on generated hosts/entities. |
-| [`zfs_arc`](zfs_arc/) | ZFS ARC cache usage on Linux via a local check — ARC-vs-max %, ARC-vs-RAM %, hit ratio, memory throttling, and a heuristic `zfs_arc_max` tuning recommendation. |
 
 ## Installing a package
 
