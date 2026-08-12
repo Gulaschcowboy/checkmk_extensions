@@ -1,0 +1,73 @@
+#!/usr/bin/env python3
+"""Checkmk special agent for the Hermes Agent dashboard REST API.
+
+Polls the local Hermes Agent web dashboard (``hermes dashboard``, default
+port 9119) over its public ``GET /api/status`` endpoint and emits a single
+Checkmk agent section:
+
+    <<<hermes_dashboard:sep(0)>>>
+
+containing the raw JSON status payload: agent version/update state, gateway
+process state, per-platform connection state, per-component health
+(gateway/dashboard/storage/platforms), and active session count.
+
+``/api/status`` is intentionally a public, unauthenticated endpoint on the
+dashboard (see Hermes docs), so no credentials are required for the default
+case. Optional HTTP basic-auth is supported for setups where the dashboard
+sits behind a reverse proxy that adds its own auth in front of it.
+"""
+import argparse
+import json
+import sys
+import base64
+from urllib.request import Request, urlopen
+from urllib.error import HTTPError, URLError
+
+
+def parse_args(argv):
+    p = argparse.ArgumentParser(description="Checkmk Hermes Agent dashboard agent")
+    p.add_argument("--port", type=int, default=9119,
+                   help="Dashboard HTTP port (default 9119)")
+    p.add_argument("--protocol", choices=["http", "https"], default="http",
+                   help="Dashboard scheme (default http)")
+    p.add_argument("--username", default=None,
+                   help="Optional HTTP basic-auth username")
+    p.add_argument("--password", default=None,
+                   help="Optional HTTP basic-auth password")
+    p.add_argument("--timeout", type=int, default=10,
+                   help="Request timeout in seconds (default 10)")
+    p.add_argument("hostname", help="Dashboard host / address")
+    return p.parse_args(argv)
+
+
+def emit(section, payload):
+    sys.stdout.write("<<<%s:sep(0)>>>\n" % section)
+    sys.stdout.write(json.dumps(payload) + "\n")
+
+
+def main(argv=None):
+    args = parse_args(argv if argv is not None else sys.argv[1:])
+    host = args.hostname
+    if ":" in host and not host.startswith("["):
+        host = "[%s]" % host
+    url = "%s://%s:%d/api/status" % (args.protocol, host, args.port)
+
+    req = Request(url, method="GET")
+    if args.username:
+        creds = "%s:%s" % (args.username, args.password or "")
+        token = base64.b64encode(creds.encode("utf-8")).decode("ascii")
+        req.add_header("Authorization", "Basic %s" % token)
+
+    try:
+        with urlopen(req, timeout=args.timeout) as resp:
+            payload = json.loads(resp.read().decode("utf-8"))
+    except (HTTPError, URLError, ValueError) as exc:
+        emit("hermes_dashboard", {"_error": str(exc)})
+        return 0
+
+    emit("hermes_dashboard", payload)
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

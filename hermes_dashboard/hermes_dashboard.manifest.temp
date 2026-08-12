@@ -1,0 +1,30 @@
+{'author': 'Alex Wilms',
+ 'description': 'Special agent for the Hermes Agent web dashboard REST API '
+                '(hermes dashboard, default port 9119). Polls the public '
+                'GET /api/status endpoint to monitor: overall installation '
+                'health, gateway process state (running/stopped/error), '
+                'per-platform connection status (Telegram, Discord, Slack, '
+                'WhatsApp, ...), per-component health (gateway, dashboard, '
+                'storage, platforms), active session count, and pending '
+                'Hermes updates. Auto-discovers one service per connected '
+                'platform and per internal component. No credentials '
+                'required by default (the endpoint is unauthenticated on '
+                'localhost); optional HTTP basic-auth for reverse-proxied '
+                'setups.',
+ 'download_url': 'https://github.com/Gulaschcowboy/checkmk_extensions',
+ 'files': {'cmk_addons_plugins': ['hermes_dashboard/libexec/agent_hermes_dashboard',
+                                  'hermes_dashboard/agent_based/hermes_dashboard.py',
+                                  'hermes_dashboard/rulesets/hermes_dashboard.py',
+                                  'hermes_dashboard/rulesets/hermes_dashboard_params.py',
+                                  'hermes_dashboard/server_side_calls/hermes_dashboard.py',
+                                  'hermes_dashboard/graphing/hermes_dashboard.py',
+                                  'hermes_dashboard/checkman/hermes_dashboard',
+                                  'hermes_dashboard/checkman/hermes_dashboard_gateway',
+                                  'hermes_dashboard/checkman/hermes_dashboard_platform',
+                                  'hermes_dashboard/checkman/hermes_dashboard_component']},
+ 'name': 'hermes_dashboard',
+ 'title': 'Hermes Agent Dashboard (REST API)',
+ 'version': '1.0.0',
+ 'version.min_required': '2.3.0b1',
+ 'version.packaged': 'hermes',
+ 'version.usable_until': None}

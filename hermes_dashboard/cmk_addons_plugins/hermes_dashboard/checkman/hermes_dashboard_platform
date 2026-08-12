@@ -1,0 +1,18 @@
+title: Hermes Agent: Gateway Platform Connection
+agents: hermes_dashboard
+catalog: app/misc
+license: GPLv2
+distribution: check_mk
+description:
+ This check monitors the connection state of an individual gateway platform
+ (e.g. Telegram, Discord, Slack, WhatsApp) configured on a Hermes Agent
+ installation, as reported by the dashboard's {GET /api/status} endpoint.
+
+ One service is discovered per platform that Hermes currently reports
+ (whatever is configured and connected/attempted). The service goes {CRIT}
+ when the platform is {disconnected} (configurable) or reports an
+ {error_code}/{error_message}, and {WARN} while {connecting}.
+
+discovery:
+ One service {Hermes Platform <name>} is created per platform present in the
+ gateway_platforms map.

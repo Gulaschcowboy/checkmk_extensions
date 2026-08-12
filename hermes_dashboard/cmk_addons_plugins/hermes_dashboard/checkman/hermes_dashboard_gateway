@@ -1,0 +1,16 @@
+title: Hermes Agent: Gateway Process State
+agents: hermes_dashboard
+catalog: app/misc
+license: GPLv2
+distribution: check_mk
+description:
+ This check monitors the state of the Hermes Agent gateway process (the
+ process that connects Telegram/Discord/Slack/etc. and runs cron jobs), as
+ reported by the dashboard's {GET /api/status} endpoint.
+
+ The service goes {CRIT} when the gateway is {stopped} (configurable),
+ {WARN} while it is {starting}/{stopping}, and {CRIT} on {error}/{crashed}.
+ The last exit reason (if any) is shown for diagnostics.
+
+discovery:
+ One service {Hermes Gateway} is created if gateway state is reported.

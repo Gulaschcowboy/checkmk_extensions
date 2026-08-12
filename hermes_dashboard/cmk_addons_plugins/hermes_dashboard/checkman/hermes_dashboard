@@ -1,0 +1,20 @@
+title: Hermes Agent: Dashboard Overview
+agents: hermes_dashboard
+catalog: app/misc
+license: GPLv2
+distribution: check_mk
+description:
+ This check monitors the overall health of a Hermes Agent installation via
+ its web dashboard's public {GET /api/status} REST endpoint. Data is
+ collected via the special agent {agent_hermes_dashboard}.
+
+ Reports the agent version, the overall status field ({ok}/{degraded}/
+ {error}), whether an update is available, and the number of currently
+ active sessions (active in the last 5 minutes).
+
+ The service goes {CRIT} if the dashboard cannot be reached at all. It
+ reflects the dashboard's own {overall} status field otherwise ({WARN} for
+ {degraded}, {CRIT} for {error}).
+
+discovery:
+ One service {Hermes Dashboard} is created if the dashboard responds.
