@@ -40,6 +40,21 @@ def _formspec():
                     custom_validate=(validators.NumberInRange(min_value=1, max_value=65535),),
                 ),
             ),
+            "address": DictElement(
+                required=False,
+                parameter_form=String(
+                    title=Title("Server address (host/IP)"),
+                    help_text=Help(
+                        "Overrides the address used to reach the dashboard. "
+                        "Leave empty to use the host's configured primary "
+                        "IP address (Checkmk default). Set this to the "
+                        "host's DNS name when the dashboard's TLS "
+                        "certificate is only valid for a hostname and not "
+                        "for the monitored IP address (avoids "
+                        "'IP address mismatch' certificate errors)."
+                    ),
+                ),
+            ),
             "protocol": DictElement(
                 required=False,
                 parameter_form=SingleChoice(
@@ -75,7 +90,7 @@ def _formspec():
                 ),
             ),
             "fetch_usage": DictElement(
-                required=False,
+                required=True,
                 parameter_form=BooleanChoice(
                     title=Title("Fetch token/cost usage data"),
                     help_text=Help(
@@ -106,7 +121,7 @@ def _formspec():
                 ),
             ),
             "no_cert_check": DictElement(
-                required=False,
+                required=True,
                 parameter_form=BooleanChoice(
                     title=Title("Disable TLS certificate verification"),
                     help_text=Help(

@@ -150,8 +150,10 @@ def main(argv=None):
     except (HTTPError, URLError, ValueError) as exc:
         emit("hermes_dashboard", {"_error": str(exc)})
         payload = None
+        status_failed = True
     else:
         emit("hermes_dashboard", payload)
+        status_failed = False
 
     if args.fetch_usage:
         usage_payload = fetch_usage(
@@ -159,7 +161,13 @@ def main(argv=None):
         )
         emit("hermes_dashboard_usage", usage_payload)
 
-    return 0
+    # /api/status is the mandatory endpoint this special agent exists for --
+    # a hard failure there must surface as a non-zero exit code so Checkmk's
+    # datasource-program execution itself is reported as failed (not just
+    # the downstream check state). --fetch-usage is best-effort telemetry
+    # and intentionally does NOT affect the exit code -- its failures are
+    # only visible via the "Hermes Usage Cost" check going UNKNOWN.
+    return 1 if status_failed else 0
 
 
 if __name__ == "__main__":

@@ -12,6 +12,7 @@ from cmk.server_side_calls.v1 import (
 
 
 class HermesDashboardParams(BaseModel):
+    address: str | None = None
     port: int = 9119
     protocol: str = "http"
     username: str | None = None
@@ -37,7 +38,7 @@ def _commands(params: HermesDashboardParams, host_config: HostConfig
         args += ["--fetch-usage", "--usage-days", str(params.usage_days)]
     if params.no_cert_check:
         args.append("--no-cert-check")
-    args.append(host_config.primary_ip_config.address)
+    args.append(params.address or host_config.primary_ip_config.address)
     yield SpecialAgentCommand(command_arguments=args)
 
 

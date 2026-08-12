@@ -34,8 +34,8 @@ endpoint; services are auto-discovered:
 ## Installation
 
 ```sh
-mkp add hermes_dashboard-1.1.1.mkp
-mkp enable hermes_dashboard 1.1.1
+mkp add hermes_dashboard-1.2.0.mkp
+mkp enable hermes_dashboard 1.2.0
 ```
 
 Then in Checkmk:
@@ -53,6 +53,11 @@ Then in Checkmk:
 
 - **HTTP port** — default `9119`
 - **Protocol** — `http` (default) or `https`
+- **Server address (host/IP)** — optional override for the address the
+  special agent connects to; leave empty to use the host's configured IP
+  address (Checkmk default). Set this when the dashboard's TLS certificate
+  is only valid for a hostname and the monitoring host is configured by IP
+  (avoids `SSL: CERTIFICATE_VERIFY_FAILED ... IP address mismatch`).
 - **HTTP basic-auth username/password** — only needed behind a reverse proxy
 - **Request timeout** — default 10s
 - **Fetch token/cost usage data** — logs in via `POST /auth/password-login`
@@ -97,5 +102,5 @@ cmk_addons_plugins/hermes_dashboard/
   rulesets/           special-agent + check-parameter rulesets
   server_side_calls/  builds the agent command line
 hermes_dashboard.manifest.temp
-hermes_dashboard-1.1.1.mkp
+hermes_dashboard-1.2.0.mkp
 ```
