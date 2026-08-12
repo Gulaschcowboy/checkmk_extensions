@@ -5,7 +5,10 @@ from cmk.rulesets.v1.form_specs import (
     DefaultValue,
     DictElement,
     Dictionary,
+    Float,
+    LevelDirection,
     ServiceState,
+    SimpleLevels,
 )
 from cmk.rulesets.v1.rule_specs import (
     CheckParameters,
@@ -115,4 +118,36 @@ rule_spec_hermes_dashboard_component = CheckParameters(
     topic=Topic.APPLICATIONS,
     parameter_form=_component_form,
     condition=HostAndItemCondition(item_title=Title("Component")),
+)
+
+
+# --- Usage / cost ------------------------------------------------------
+def _usage_form():
+    return Dictionary(
+        elements={
+            "cost_levels": DictElement(
+                required=False,
+                parameter_form=SimpleLevels(
+                    title=Title("Levels on estimated usage cost (USD)"),
+                    help_text=Help(
+                        "Warn/crit thresholds on the estimated USD cost "
+                        "over the configured reporting window (see the "
+                        "special agent's 'Usage reporting window' option, "
+                        "default 1 day)."
+                    ),
+                    form_spec_template=Float(),
+                    level_direction=LevelDirection.UPPER,
+                    prefill_fixed_levels=DefaultValue((10.0, 25.0)),
+                ),
+            ),
+        }
+    )
+
+
+rule_spec_hermes_dashboard_usage = CheckParameters(
+    name="hermes_dashboard_usage",
+    title=Title("Hermes dashboard token/cost usage"),
+    topic=Topic.APPLICATIONS,
+    parameter_form=_usage_form,
+    condition=HostCondition(),
 )

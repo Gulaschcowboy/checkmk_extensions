@@ -10,7 +10,10 @@
                 'platform and per internal component. No credentials '
                 'required by default (the endpoint is unauthenticated on '
                 'localhost); optional HTTP basic-auth for reverse-proxied '
-                'setups.',
+                'setups. Optionally logs in against the dashboard\'s own '
+                'password auth gate to fetch token/cost usage data from '
+                'GET /api/analytics/usage, exposing a "Hermes Usage Cost" '
+                'service with cost/token metrics and configurable levels.',
  'download_url': 'https://github.com/Gulaschcowboy/checkmk_extensions',
  'files': {'cmk_addons_plugins': ['hermes_dashboard/libexec/agent_hermes_dashboard',
                                   'hermes_dashboard/agent_based/hermes_dashboard.py',
@@ -21,10 +24,11 @@
                                   'hermes_dashboard/checkman/hermes_dashboard',
                                   'hermes_dashboard/checkman/hermes_dashboard_gateway',
                                   'hermes_dashboard/checkman/hermes_dashboard_platform',
-                                  'hermes_dashboard/checkman/hermes_dashboard_component']},
+                                  'hermes_dashboard/checkman/hermes_dashboard_component',
+                                  'hermes_dashboard/checkman/hermes_dashboard_usage']},
  'name': 'hermes_dashboard',
  'title': 'Hermes Agent Dashboard (REST API)',
- 'version': '1.0.0',
+ 'version': '1.1.1',
  'version.min_required': '2.3.0b1',
  'version.packaged': 'hermes',
  'version.usable_until': None}

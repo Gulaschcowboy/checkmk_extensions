@@ -1,0 +1,29 @@
+title: Hermes Agent: Dashboard Token/Cost Usage
+agents: hermes_dashboard
+catalog: app/misc
+license: GPLv2
+distribution: check_mk
+description:
+ This check monitors token consumption and estimated cost of a Hermes Agent
+ installation via its web dashboard's authenticated {GET /api/analytics/usage}
+ REST endpoint. Data is collected via the special agent {agent_hermes_dashboard}
+ when the "Fetch token/cost usage data" option is enabled in its rule.
+
+ Reports the estimated USD cost, input/output/cache-read token counts, active
+ session count, and API call count over the configured reporting window
+ (default: the last 1 day).
+
+ Fetching this data requires the special agent to log in against the
+ dashboard's own username/password auth gate (the same credentials that
+ unlock the dashboard web UI, i.e. {dashboard.basic_auth} in config.yaml) —
+ this is a separate auth layer from the optional reverse-proxy basic-auth the
+ special agent otherwise sends against {/api/status}.
+
+ The service goes {WARN}/{CRIT} when the estimated cost crosses the
+ configured levels (default: warn at $10, crit at $25 over the reporting
+ window). It goes {UNKNOWN} if usage fetching is disabled or the login/fetch
+ failed (e.g. wrong credentials, dashboard auth gate unreachable).
+
+discovery:
+ One service {Hermes Usage Cost} is created if the special agent was run
+ with usage fetching enabled and returned valid totals.

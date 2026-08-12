@@ -2,6 +2,7 @@
 """WATO ruleset for the Hermes Agent dashboard special agent."""
 from cmk.rulesets.v1 import Help, Title
 from cmk.rulesets.v1.form_specs import (
+    BooleanChoice,
     DefaultValue,
     DictElement,
     Dictionary,
@@ -71,6 +72,50 @@ def _formspec():
                     title=Title("Request timeout (seconds)"),
                     prefill=DefaultValue(10),
                     custom_validate=(validators.NumberInRange(min_value=1, max_value=300),),
+                ),
+            ),
+            "fetch_usage": DictElement(
+                required=False,
+                parameter_form=BooleanChoice(
+                    title=Title("Fetch token/cost usage data"),
+                    help_text=Help(
+                        "Additionally logs in against the dashboard's own "
+                        "auth gate ({POST /auth/password-login}, provider "
+                        "\"basic\") using the username/password above, then "
+                        "queries the authenticated {GET /api/analytics/usage} "
+                        "endpoint for token/cost data. Requires the SAME "
+                        "credentials that unlock the dashboard's web UI "
+                        "login ({dashboard.basic_auth} in config.yaml), not "
+                        "the optional reverse-proxy basic-auth this special "
+                        "agent otherwise sends against {/api/status}."
+                    ),
+                    prefill=DefaultValue(False),
+                ),
+            ),
+            "usage_days": DictElement(
+                required=False,
+                parameter_form=Integer(
+                    title=Title("Usage reporting window (days)"),
+                    help_text=Help(
+                        "Only relevant when 'Fetch token/cost usage data' "
+                        "is enabled. Passed as {?days=} to "
+                        "{/api/analytics/usage}."
+                    ),
+                    prefill=DefaultValue(1),
+                    custom_validate=(validators.NumberInRange(min_value=1, max_value=90),),
+                ),
+            ),
+            "no_cert_check": DictElement(
+                required=False,
+                parameter_form=BooleanChoice(
+                    title=Title("Disable TLS certificate verification"),
+                    help_text=Help(
+                        "Only relevant for HTTPS. Disables certificate/"
+                        "hostname verification -- needed when the dashboard "
+                        "is reached via a bare IP address or a self-signed "
+                        "certificate."
+                    ),
+                    prefill=DefaultValue(False),
                 ),
             ),
         },

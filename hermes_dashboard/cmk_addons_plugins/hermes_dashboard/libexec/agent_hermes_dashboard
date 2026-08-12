@@ -2,7 +2,7 @@
 """Checkmk special agent for the Hermes Agent dashboard REST API.
 
 Polls the local Hermes Agent web dashboard (``hermes dashboard``, default
-port 9119) over its public ``GET /api/status`` endpoint and emits a single
+port 9119) over its public ``GET /api/status`` endpoint and emits a
 Checkmk agent section:
 
     <<<hermes_dashboard:sep(0)>>>
@@ -15,12 +15,29 @@ process state, per-platform connection state, per-component health
 dashboard (see Hermes docs), so no credentials are required for the default
 case. Optional HTTP basic-auth is supported for setups where the dashboard
 sits behind a reverse proxy that adds its own auth in front of it.
+
+Optionally (``--fetch-usage``), the agent additionally logs in against the
+dashboard's own auth gate (``POST /auth/password-login``, provider
+"basic") to obtain a session cookie, then queries the authenticated
+``GET /api/analytics/usage`` endpoint for token/cost usage data, emitting a
+second section:
+
+    <<<hermes_dashboard_usage:sep(0)>>>
+
+This requires the SAME username/password that unlocks the dashboard's web
+UI login (``dashboard.basic_auth`` in config.yaml or the
+``HERMES_DASHBOARD_BASIC_AUTH_PASSWORD(_HASH)`` env var) -- this is a
+different auth layer than the optional HTTP basic-auth header used against
+``/api/status`` above (that one is for a reverse proxy in front of the
+dashboard, not the dashboard's own login).
 """
 import argparse
+import http.cookiejar
 import json
+import ssl
 import sys
 import base64
-from urllib.request import Request, urlopen
+from urllib.request import Request, urlopen, build_opener, HTTPCookieProcessor, HTTPSHandler
 from urllib.error import HTTPError, URLError
 
 
@@ -31,11 +48,17 @@ def parse_args(argv):
     p.add_argument("--protocol", choices=["http", "https"], default="http",
                    help="Dashboard scheme (default http)")
     p.add_argument("--username", default=None,
-                   help="Optional HTTP basic-auth username")
+                   help="Optional HTTP basic-auth username / dashboard login username")
     p.add_argument("--password", default=None,
-                   help="Optional HTTP basic-auth password")
+                   help="Optional HTTP basic-auth password / dashboard login password")
     p.add_argument("--timeout", type=int, default=10,
                    help="Request timeout in seconds (default 10)")
+    p.add_argument("--fetch-usage", action="store_true",
+                   help="Also log in and fetch /api/analytics/usage (token/cost data)")
+    p.add_argument("--usage-days", type=int, default=1,
+                   help="Reporting window in days for the usage endpoint (default 1)")
+    p.add_argument("--no-cert-check", action="store_true",
+                   help="Disable TLS certificate verification (self-signed / IP-only certs)")
     p.add_argument("hostname", help="Dashboard host / address")
     return p.parse_args(argv)
 
@@ -45,12 +68,72 @@ def emit(section, payload):
     sys.stdout.write(json.dumps(payload) + "\n")
 
 
+def _ssl_context(no_cert_check):
+    if not no_cert_check:
+        return None
+    ctx = ssl.create_default_context()
+    ctx.check_hostname = False
+    ctx.verify_mode = ssl.CERT_NONE
+    return ctx
+
+
+def fetch_usage(base_url, username, password, days, timeout, ssl_context):
+    """Log in via the dashboard's password-auth gate and fetch usage data.
+
+    Returns the parsed JSON payload from ``/api/analytics/usage``, or a
+    dict with an ``_error`` key on any failure (bad credentials, provider
+    unreachable, rate-limited, ...). Never raises -- this is best-effort
+    telemetry, not core status.
+    """
+    if not username or not password:
+        return {"_error": "username/password required for --fetch-usage"}
+
+    jar = http.cookiejar.CookieJar()
+    handlers = [HTTPCookieProcessor(jar)]
+    if ssl_context is not None:
+        handlers.append(HTTPSHandler(context=ssl_context))
+    opener = build_opener(*handlers)
+
+    login_body = json.dumps({
+        "provider": "basic",
+        "username": username,
+        "password": password,
+        "next": "",
+    }).encode("utf-8")
+    login_req = Request(
+        "%s/auth/password-login" % base_url,
+        data=login_body,
+        method="POST",
+        headers={"Content-Type": "application/json"},
+    )
+    try:
+        with opener.open(login_req, timeout=timeout) as resp:
+            resp.read()
+    except HTTPError as exc:
+        return {"_error": "login failed: HTTP %s" % exc.code}
+    except URLError as exc:
+        return {"_error": "login unreachable: %s" % exc}
+
+    usage_req = Request(
+        "%s/api/analytics/usage?days=%d" % (base_url, days),
+        method="GET",
+    )
+    try:
+        with opener.open(usage_req, timeout=timeout) as resp:
+            return json.loads(resp.read().decode("utf-8"))
+    except (HTTPError, URLError, ValueError) as exc:
+        return {"_error": "usage fetch failed: %s" % exc}
+
+
 def main(argv=None):
     args = parse_args(argv if argv is not None else sys.argv[1:])
     host = args.hostname
     if ":" in host and not host.startswith("["):
         host = "[%s]" % host
-    url = "%s://%s:%d/api/status" % (args.protocol, host, args.port)
+    base_url = "%s://%s:%d" % (args.protocol, host, args.port)
+    url = "%s/api/status" % base_url
+
+    ssl_context = _ssl_context(args.no_cert_check)
 
     req = Request(url, method="GET")
     if args.username:
@@ -59,13 +142,23 @@ def main(argv=None):
         req.add_header("Authorization", "Basic %s" % token)
 
     try:
-        with urlopen(req, timeout=args.timeout) as resp:
+        open_kwargs = {"timeout": args.timeout}
+        if ssl_context is not None:
+            open_kwargs["context"] = ssl_context
+        with urlopen(req, **open_kwargs) as resp:
             payload = json.loads(resp.read().decode("utf-8"))
     except (HTTPError, URLError, ValueError) as exc:
         emit("hermes_dashboard", {"_error": str(exc)})
-        return 0
+        payload = None
+    else:
+        emit("hermes_dashboard", payload)
 
-    emit("hermes_dashboard", payload)
+    if args.fetch_usage:
+        usage_payload = fetch_usage(
+            base_url, args.username, args.password, args.usage_days, args.timeout, ssl_context,
+        )
+        emit("hermes_dashboard_usage", usage_payload)
+
     return 0
 
 

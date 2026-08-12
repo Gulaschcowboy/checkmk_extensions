@@ -17,6 +17,9 @@ class HermesDashboardParams(BaseModel):
     username: str | None = None
     password: Secret | None = None
     timeout: int = 10
+    fetch_usage: bool = False
+    usage_days: int = 1
+    no_cert_check: bool = False
 
 
 def _commands(params: HermesDashboardParams, host_config: HostConfig
@@ -30,6 +33,10 @@ def _commands(params: HermesDashboardParams, host_config: HostConfig
         args += ["--username", params.username]
     if params.password is not None:
         args += ["--password", params.password.unsafe()]
+    if params.fetch_usage:
+        args += ["--fetch-usage", "--usage-days", str(params.usage_days)]
+    if params.no_cert_check:
+        args.append("--no-cert-check")
     args.append(host_config.primary_ip_config.address)
     yield SpecialAgentCommand(command_arguments=args)
 

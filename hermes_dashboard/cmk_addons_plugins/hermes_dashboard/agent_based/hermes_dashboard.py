@@ -214,3 +214,88 @@ check_plugin_hermes_dashboard_component = CheckPlugin(
     check_default_parameters={"state_recent_errors": 1, "state_platform_gap": 1},
     check_ruleset_name="hermes_dashboard_component",
 )
+
+
+# --------------------------------------------------------------------------
+# Token/cost usage (from GET /api/analytics/usage, requires --fetch-usage)
+# --------------------------------------------------------------------------
+def parse_hermes_dashboard_usage(string_table):
+    if not string_table:
+        return {}
+    try:
+        return json.loads(string_table[0][0])
+    except (ValueError, IndexError):
+        return {}
+
+
+agent_section_hermes_dashboard_usage = AgentSection(
+    name="hermes_dashboard_usage",
+    parse_function=parse_hermes_dashboard_usage,
+)
+
+
+def discover_hermes_dashboard_usage(section):
+    if section and "_error" not in section and "totals" in section:
+        yield Service()
+
+
+def check_hermes_dashboard_usage(params, section):
+    if not section:
+        yield Result(state=State.UNKNOWN, summary="No usage data (fetch_usage disabled?)")
+        return
+    if "_error" in section:
+        yield Result(state=State.UNKNOWN,
+                     summary="Usage data unavailable: %s" % section["_error"])
+        return
+
+    totals = section.get("totals")
+    if not isinstance(totals, dict):
+        yield Result(state=State.UNKNOWN, summary="No usage totals in response")
+        return
+
+    period_days = section.get("period_days", 1)
+    cost = float(totals.get("total_estimated_cost") or 0.0)
+    input_tokens = float(totals.get("total_input") or 0)
+    output_tokens = float(totals.get("total_output") or 0)
+    cache_read_tokens = float(totals.get("total_cache_read") or 0)
+    sessions = totals.get("total_sessions")
+    api_calls = totals.get("total_api_calls")
+
+    levels = params.get("cost_levels")
+
+    state = State.OK
+    if levels:
+        warn_v, crit_v = levels
+        if crit_v is not None and cost >= crit_v:
+            state = State.CRIT
+        elif warn_v is not None and cost >= warn_v:
+            state = State.WARN
+
+    summary = "Estimated cost: $%.2f over last %d day(s)" % (cost, period_days)
+    yield Result(state=state, summary=summary)
+    yield Metric("hermes_usage_cost", cost, levels=levels if levels else None)
+
+    detail = "Tokens: %d in / %d out / %d cache-read" % (
+        int(input_tokens), int(output_tokens), int(cache_read_tokens),
+    )
+    yield Result(state=State.OK, notice=detail)
+    yield Metric("hermes_usage_input_tokens", input_tokens)
+    yield Metric("hermes_usage_output_tokens", output_tokens)
+    yield Metric("hermes_usage_cache_read_tokens", cache_read_tokens)
+
+    if sessions is not None:
+        yield Result(state=State.OK, notice="Sessions: %d" % sessions)
+        yield Metric("hermes_usage_sessions", float(sessions))
+    if api_calls is not None:
+        yield Result(state=State.OK, notice="API calls: %d" % api_calls)
+        yield Metric("hermes_usage_api_calls", float(api_calls))
+
+
+check_plugin_hermes_dashboard_usage = CheckPlugin(
+    name="hermes_dashboard_usage",
+    service_name="Hermes Usage Cost",
+    discovery_function=discover_hermes_dashboard_usage,
+    check_function=check_hermes_dashboard_usage,
+    check_default_parameters={},
+    check_ruleset_name="hermes_dashboard_usage",
+)
