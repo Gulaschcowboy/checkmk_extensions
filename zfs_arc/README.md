@@ -5,6 +5,11 @@ Checkmk MKP that monitors the **ZFS Adaptive Replacement Cache (ARC)** on a
 Linux host with ZFS installed and in use.
 <img width="999" height="71" alt="image" src="https://github.com/user-attachments/assets/cedb551e-a6fc-4216-b52d-45ed0ee819a9" />
 
+### Special, experimental feature
+Gives tuning suggestions and hints within Details, e.g.:
+
+`Tuning suggestion : ARC oversized but not more useful -> reduce zfs_arc_max to ~60G`
+<img width="856" height="165" alt="image" src="https://github.com/user-attachments/assets/bafcbc11-950b-4966-adf3-c1897bf0e775" />
 
 
 The agent plug-in runs **synchronously** with each agent run — reading two
