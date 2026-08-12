@@ -1,5 +1,12 @@
 #!/usr/bin/env bash
 
+# Force a locale with a dot decimal separator: awk/bc must agree on number
+# format, otherwise a comma-decimal locale (e.g. de_DE) makes awk print
+# "100,0" and bc then chokes on it with a silent syntax error, disabling the
+# hit-ratio warn/crit checks below.
+export LC_NUMERIC=C
+export LC_ALL=C
+
 ARCSTATS="/proc/spl/kstat/zfs/arcstats"
 
 if [[ ! -f "$ARCSTATS" ]]; then

@@ -47,8 +47,8 @@ UNKNOWN and exits without further output.
 ## Installation
 
 ```bash
-mkp add zfs_arc-0.0.3.mkp
-mkp enable zfs_arc 0.0.3
+mkp add zfs_arc-0.0.4.mkp
+mkp enable zfs_arc 0.0.4
 ```
 
 ### Deploy the local check
@@ -69,6 +69,10 @@ appears.
 
 ## Changelog
 
+- **0.0.4**: `zfs_arc.sh` now forces `LC_NUMERIC=C`/`LC_ALL=C`. Under a
+  comma-decimal locale (e.g. `de_DE`), `awk` printed hit-ratio values like
+  `60,0` and the subsequent `bc -l` comparison failed with a silent syntax
+  error, disabling the hit-ratio WARN/CRIT checks entirely.
 - **0.0.3**: fixed the `zfs_arc_cache` plugin's file check, which was
   inverted (`[ ! -x ... ]` instead of `[ -f ... ]`) and only ever emitted
   the section by accident because `/proc` files are never executable; added
