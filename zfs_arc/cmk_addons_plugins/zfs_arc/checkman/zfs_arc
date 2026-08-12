@@ -1,0 +1,37 @@
+title: ZFS ARC cache usage
+agents: linux
+catalog: os/kernel
+license: GPLv2
+distribution: check_mk
+description:
+ This check monitors the ZFS Adaptive Replacement Cache (ARC) on a Linux
+ host with ZFS installed. It reports the ARC size relative to its
+ configured maximum ({zfs_arc_max}), the ARC size relative to total system
+ RAM, and the cache hit ratio.
+
+ The service state is derived from three independently configurable
+ warning/critical level pairs: ARC-vs-max percent, ARC-vs-RAM percent, and
+ (inverted) hit ratio percent. An ARC memory throttle event count greater
+ than zero always raises the state to at least WARN, since it indicates the
+ host is under memory pressure severe enough for ZFS to throttle cache
+ growth.
+
+ The service details additionally show a heuristic {zfs_arc_max} tuning
+ suggestion (e.g. reduce/increase the target size). This suggestion is
+ advisory only and never influences the service state.
+
+ The data is collected by the agent plug-in {zfs_arc}, which reads
+ {/proc/spl/kstat/zfs/arcstats} and {/proc/meminfo} and emits raw numbers
+ only. On a host without a ZFS ARC (module not loaded / no pool imported),
+ the plug-in prints nothing, so no service is discovered on that host. The
+ plug-in can be deployed via the Agent Bakery.
+
+ Levels can be configured with the rule "ZFS ARC cache usage".
+
+item:
+ None.
+
+discovery:
+ One service {ZFS ARC cache usage} is created on every host that sends the
+ {zfs_arc} agent section (i.e. every host where ZFS ARC stats are
+ available).

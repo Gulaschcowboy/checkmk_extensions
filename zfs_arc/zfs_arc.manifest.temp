@@ -1,0 +1,29 @@
+{'author': 'Christian Wirtz',
+ 'description': 'Agent-based monitoring of ZFS ARC (Adaptive Replacement '
+                'Cache) usage on Linux hosts. The agent plug-in collects raw '
+                'numbers from /proc/spl/kstat/zfs/arcstats and /proc/meminfo '
+                '(no shell/awk/bc arithmetic, avoiding locale-dependent '
+                'decimal-separator bugs); the server-side check derives the '
+                'service state from three independently configurable percent '
+                'levels (ARC vs. zfs_arc_max, ARC vs. RAM, hit ratio) plus an '
+                'unconditional WARN on ARC memory throttling, and shows a '
+                'heuristic zfs_arc_max tuning suggestion. On hosts without a '
+                'ZFS ARC, the plug-in emits nothing, so no service is '
+                'discovered there. Includes a check-parameter ruleset, an '
+                'Agent Bakery ruleset + bakery plug-in for automated '
+                'deployment, and graphing (perf-o-meter + graph). This is the '
+                'agent-based + bakery successor of the former local check.',
+ 'download_url': 'https://github.com/Gulaschcowboy/checkmk_extensions',
+ 'files': {'cmk_addons_plugins': ['zfs_arc/agents/zfs_arc',
+                                  'zfs_arc/agent_based/zfs_arc.py',
+                                  'zfs_arc/rulesets/zfs_arc.py',
+                                  'zfs_arc/rulesets/agent_config_zfs_arc.py',
+                                  'zfs_arc/bakery/bakery_plugin_zfs_arc.py',
+                                  'zfs_arc/graphing/zfs_arc.py',
+                                  'zfs_arc/checkman/zfs_arc']},
+ 'name': 'zfs_arc',
+ 'title': 'ZFS ARC cache usage (agent-based + bakery)',
+ 'version': '1.0.0',
+ 'version.min_required': '2.3.0',
+ 'version.packaged': 'hermes',
+ 'version.usable_until': None}

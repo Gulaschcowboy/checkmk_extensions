@@ -1,0 +1,91 @@
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+#
+# Checkmk agent plug-in: ZFS ARC cache raw stats.
+# ---------------------------------------------------------------------------
+# This is the AGENT side of the "zfs_arc" plug-in. It only COLLECTS raw
+# numbers and prints them as a Checkmk agent section; all thresholding,
+# state and output formatting is done by the server-side check plug-in.
+#
+# It emits one JSON document under:
+#     <<<zfs_arc:sep(0)>>>
+#
+# Payload:
+#   {
+#     "size": <bytes>, "c_max": <bytes>, "c_min": <bytes>,
+#     "hits": <count>, "misses": <count>,
+#     "memory_throttle_count": <count>, "mem_total": <bytes>
+#   }
+#
+# If the host has no ZFS ARC (no /proc/spl/kstat/zfs/arcstats), the plug-in
+# prints NOTHING -- no section header at all. Checkmk then simply does not
+# discover a service on that host, instead of a permanent "not available"
+# CRIT service. Deployment: Agent Bakery installs this to
+# /usr/lib/check_mk_agent/plugins/zfs_arc (runs synchronously, no caching --
+# reading two small /proc files is effectively free).
+#
+# Requires python3. Stdlib only.
+# ---------------------------------------------------------------------------
+import json
+
+ARCSTATS = "/proc/spl/kstat/zfs/arcstats"
+MEMINFO = "/proc/meminfo"
+
+# arcstats keys we care about -> JSON key
+WANTED = {
+    "size": "size",
+    "c_max": "c_max",
+    "c_min": "c_min",
+    "hits": "hits",
+    "misses": "misses",
+    "memory_throttle_count": "memory_throttle_count",
+}
+
+
+def read_arcstats(path):
+    """Parse /proc/spl/kstat/zfs/arcstats ('name type data' lines) into a dict."""
+    values = {}
+    try:
+        with open(path) as fh:
+            for line in fh:
+                parts = line.split()
+                if len(parts) != 3:
+                    continue
+                name, _type, data = parts
+                if name in WANTED:
+                    try:
+                        values[WANTED[name]] = int(data)
+                    except ValueError:
+                        continue
+    except OSError:
+        return None
+    return values or None
+
+
+def read_mem_total(path):
+    try:
+        with open(path) as fh:
+            for line in fh:
+                if line.startswith("MemTotal:"):
+                    # value is in KiB
+                    return int(line.split()[1]) * 1024
+    except (OSError, ValueError, IndexError):
+        pass
+    return 0
+
+
+def main():
+    arcstats = read_arcstats(ARCSTATS)
+    if arcstats is None:
+        # No ZFS on this host: emit nothing, so no section, no service.
+        return
+
+    payload = dict(arcstats)
+    payload["mem_total"] = read_mem_total(MEMINFO)
+
+    print("<<<zfs_arc:sep(0)>>>")
+    print(json.dumps(payload))
+
+
+if __name__ == "__main__":
+    main()
