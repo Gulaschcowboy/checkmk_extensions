@@ -36,8 +36,8 @@ endpoint; services are auto-discovered:
 ## Installation
 
 ```sh
-mkp add hermes_dashboard-1.2.0.mkp
-mkp enable hermes_dashboard 1.2.0
+mkp add hermes_dashboard-1.2.1.mkp
+mkp enable hermes_dashboard 1.2.1
 ```
 
 Then in Checkmk:
@@ -99,10 +99,10 @@ docs) exposes more that could become additional checks later, e.g.:
 cmk_addons_plugins/hermes_dashboard/
   agent_based/        hermes_dashboard.py (overview, gateway, platform, component, usage checks)
   checkman/           manpages for each check
-  graphing/           metrics (active_sessions, hermes_usage_cost, tokens, sessions, api_calls)
+  graphing/           metrics (hermes_dashboard_active_sessions, hermes_usage_cost, tokens, sessions, api_calls)
   libexec/            agent_hermes_dashboard  (the special agent)
   rulesets/           special-agent + check-parameter rulesets
   server_side_calls/  builds the agent command line
 hermes_dashboard.manifest.temp
-hermes_dashboard-1.2.0.mkp
+hermes_dashboard-1.2.1.mkp
 ```

@@ -57,7 +57,7 @@ def check_hermes_dashboard(params, section):
     active_sessions = section.get("active_sessions")
     if active_sessions is not None:
         yield Result(state=State.OK, summary="Active sessions: %d" % active_sessions)
-        yield Metric("active_sessions", float(active_sessions))
+        yield Metric("hermes_dashboard_active_sessions", float(active_sessions))
 
     gateway_busy = section.get("gateway_busy")
     if gateway_busy is not None:

@@ -28,7 +28,7 @@
                                   'hermes_dashboard/checkman/hermes_dashboard_usage']},
  'name': 'hermes_dashboard',
  'title': 'Hermes Agent Dashboard (REST API)',
- 'version': '1.2.0',
+ 'version': '1.2.1',
  'version.min_required': '2.3.0b1',
  'version.packaged': 'hermes',
  'version.usable_until': None}
