@@ -46,7 +46,7 @@ cmk_addons_plugins/dnssec_health/
 
 ## Setup
 
-1. Install the package: `mkp add dnssec_health-1.1.0.mkp && mkp enable dnssec_health 1.1.0`.
+1. Install the package: `mkp add dnssec_health-1.1.1.mkp && mkp enable dnssec_health 1.1.1`.
 2. In the GUI: **Setup › Agents › Other integrations › DNSSEC status**.
 3. Add the domains to check. Optionally pin the recursive DNS servers to use
    (default: the resolvers from the Checkmk server's `/etc/resolv.conf`) and the
@@ -61,6 +61,10 @@ service state for the two failure modes (both default to **WARN**):
 * **not DNSSEC-signed** — the domain has no `DNSKEY` records;
 * **signed but not validated** — `DNSKEY` present but the resolver did not set
   the `AD` bit (usually a non-validating resolver, or a validation failure).
+
+## Changelog
+
+- **1.1.1** — Make description compatible with Checkmk Exchange.
 
 ## Compatibility
 
