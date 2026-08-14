@@ -40,7 +40,7 @@ cmk_addons_plugins/homeassistant/
 
 ## Setup
 
-1. Install the package: `mkp add homeassistant-0.2.4.mkp && mkp enable homeassistant 0.2.4`.
+1. Install the package: `mkp add homeassistant-0.2.5.mkp && mkp enable homeassistant 0.2.5`.
 2. Create a Home Assistant **long-lived access token** (Home Assistant →
    profile → Security → Long-lived access tokens).
 3. In the Checkmk GUI: **Setup › Agents › Other integrations › Home
@@ -65,6 +65,10 @@ cmk_addons_plugins/homeassistant/
 | API timeout | Per-request timeout in seconds |
 | Warn when entity data is older than seconds | Stale-data threshold, `0` disables the check |
 | Maximum generated piggyback hosts / imported entities | Safety limits to protect the Checkmk service budget, `0` = unlimited |
+
+## Changelog
+
+- **0.2.5** — Make description compatible with Checkmk Exchange.
 
 ## Verified against
 
