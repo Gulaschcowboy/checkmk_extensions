@@ -93,6 +93,12 @@ docs) exposes more that could become additional checks later, e.g.:
 - `GET /api/logs` — recent ERROR-level log line count as an early-warning
   metric.
 
+## Changelog
+
+- 1.2.1: Fix metric-name collision (`active_sessions` renamed to
+  `hermes_dashboard_active_sessions` to avoid clashing with
+  `cmk.plugins.citrix.graphing.active_sessions`).
+
 ## Layout
 
 ```
