@@ -43,11 +43,21 @@ cmk_addons_plugins/opnsense/
     └── opnsense_disk
 ```
 
+## Changelog
+
+- 1.0.3: Fix `cmk-validate-plugins` error on `opnsense_memory`/`opnsense_disk`
+  ("Default parameters ... cannot be read by referenced rule spec ...
+  Unable to transform value"). The rulesets use `SimpleLevels`, which expects
+  `check_default_parameters={"levels": ("fixed", (80.0, 90.0))}` (Checkmk's
+  `LevelsT` tuple form), not the bare `(80.0, 90.0)` tuple used before.
+  Both check functions now go through `cmk.agent_based.v2.check_levels()` so
+  future rule changes stay in sync with the ruleset's value shape.
+
 ## Install
 
 ```
-mkp add opnsense-1.0.2.mkp
-mkp enable opnsense 1.0.2
+mkp add opnsense-1.0.3.mkp
+mkp enable opnsense 1.0.3
 ```
 
 Then create a host for the firewall and add a rule under

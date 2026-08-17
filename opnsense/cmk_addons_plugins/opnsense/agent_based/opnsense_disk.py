@@ -7,6 +7,7 @@ from cmk.agent_based.v2 import (
     Result,
     Service,
     State,
+    check_levels,
 )
 
 
@@ -39,18 +40,20 @@ def check_opnsense_disk(item, params, section):
         pct = float(dev.get("used_pct", 0))
     except (ValueError, TypeError):
         pct = 0.0
-    warn, crit = params.get("levels", (80.0, 90.0))
-    state = State.OK
-    if pct >= crit:
-        state = State.CRIT
-    elif pct >= warn:
-        state = State.WARN
+    levels_upper = params.get("levels", ("fixed", (80.0, 90.0)))
 
-    yield Result(state=state,
-                 summary="%s used: %.0f%% (%s of %s) on %s [%s]"
-                 % (item, pct, dev.get("used", "?"), dev.get("blocks", "?"),
+    result, metric = check_levels(
+        pct,
+        levels_upper=levels_upper,
+        metric_name="fs_used_percent",
+        render_func=lambda v: "%.0f%%" % v,
+        boundaries=(0, 100),
+    )
+    yield Result(state=result.state,
+                 summary="%s used: %s (%s of %s) on %s [%s]"
+                 % (item, result.summary, dev.get("used", "?"), dev.get("blocks", "?"),
                     dev.get("device", "?"), dev.get("type", "?")))
-    yield Metric("fs_used_percent", pct, levels=(warn, crit), boundaries=(0, 100))
+    yield metric
 
 
 check_plugin_opnsense_disk = CheckPlugin(
@@ -59,6 +62,6 @@ check_plugin_opnsense_disk = CheckPlugin(
     service_name="OPNsense Filesystem %s",
     discovery_function=discover_opnsense_disk,
     check_function=check_opnsense_disk,
-    check_default_parameters={"levels": (80.0, 90.0)},
+    check_default_parameters={"levels": ("fixed", (80.0, 90.0))},
     check_ruleset_name="opnsense_disk",
 )

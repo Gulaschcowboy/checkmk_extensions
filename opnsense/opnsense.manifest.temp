@@ -22,7 +22,7 @@
                                   'opnsense/checkman/opnsense_disk']},
  'name': 'opnsense',
  'title': 'OPNsense firewall (REST API)',
- 'version': '1.0.2',
+ 'version': '1.0.3',
  'version.min_required': '2.3.0b1',
  'version.packaged': 'hermes',
  'version.usable_until': None}

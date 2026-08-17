@@ -9,6 +9,7 @@ from cmk.agent_based.v2 import (
     Result,
     Service,
     State,
+    check_levels,
     render,
 )
 
@@ -127,18 +128,26 @@ def check_opnsense_memory(params, section):
         return
 
     pct = 100.0 * used / total
-    warn, crit = params.get("levels", (80.0, 90.0))
-    state = State.OK
-    if pct >= crit:
-        state = State.CRIT
-    elif pct >= warn:
-        state = State.WARN
-    yield Result(state=state,
-                 summary="Used: %s of %s (%.1f%%)"
-                 % (render.bytes(used), render.bytes(total), pct))
-    yield Metric("mem_used", used, levels=(total * warn / 100, total * crit / 100),
-                 boundaries=(0, total))
-    yield Metric("mem_used_percent", pct, levels=(warn, crit), boundaries=(0, 100))
+    levels_upper = params.get("levels", ("fixed", (80.0, 90.0)))
+
+    result, metric = check_levels(
+        pct,
+        levels_upper=levels_upper,
+        metric_name="mem_used_percent",
+        render_func=lambda v: "%.1f%%" % v,
+        boundaries=(0, 100),
+    )
+    yield Result(state=result.state,
+                 summary="Used: %s of %s (%s)"
+                 % (render.bytes(used), render.bytes(total), result.summary))
+    yield metric
+
+    if levels_upper[0] == "fixed":
+        warn, crit = levels_upper[1]
+        yield Metric("mem_used", used, levels=(total * warn / 100, total * crit / 100),
+                     boundaries=(0, total))
+    else:
+        yield Metric("mem_used", used, boundaries=(0, total))
 
     # swap
     swap = section.get("swap", {})
@@ -165,6 +174,6 @@ check_plugin_opnsense_memory = CheckPlugin(
     service_name="OPNsense Memory",
     discovery_function=discover_opnsense_memory,
     check_function=check_opnsense_memory,
-    check_default_parameters={"levels": (80.0, 90.0)},
+    check_default_parameters={"levels": ("fixed", (80.0, 90.0))},
     check_ruleset_name="opnsense_memory",
 )
