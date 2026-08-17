@@ -1,0 +1,23 @@
+title: Checkmk Known Catalog
+agents: linux, windows
+catalog: app/checkmk
+license: GPLv2
+distribution:
+description:
+ Read-only reference service that lists the application types the Monitoring
+ Compliance detection knows about (its built-in alias, signature and title
+ tables), annotated with whether a covering check plug-in is currently
+ available on this site. It is informational and always {OK}.
+
+ Unlike the capability database, this service does not reflect observed host
+ state; it is a static reference of the detection knowledge. It is created when
+ "Report known catalog" is enabled in the special-agent rule on a host.
+
+ Metrics: known_catalog_total, known_catalog_available.
+
+item:
+ No item. One service per reporting host.
+
+discovery:
+ One service "Checkmk Known Catalog" is created when the special agent emits
+ the known-catalog section.

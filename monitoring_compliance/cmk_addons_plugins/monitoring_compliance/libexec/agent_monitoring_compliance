@@ -1,0 +1,291 @@
+#!/usr/bin/env python3
+# Special agent for "Checkmk Monitoring Compliance".
+#
+# Runs server-side (as the site user) and provides the information a normal
+# check plug-in cannot see by itself:
+#   * monitored_plugins   -> check plug-ins already active on THIS host
+#                            (Livestatus, check_command 'check_mk-<plugin>')
+#   * available_plugins   -> plug-ins the site knows at all (cmk -L, incl. MKPs)
+#   * host_labels         -> the host's labels (Livestatus 'labels' column)
+#   * inventory_packages  -> installed packages from the HW/SW inventory tree
+#
+# Output: one JSON document in section monitoring_compliance_serverinfo.
+
+import argparse
+import gzip
+import json
+import os
+import socket
+import subprocess
+import sys
+import time
+
+
+def parse_args(argv):
+    p = argparse.ArgumentParser(description="Checkmk Monitoring Compliance agent")
+    p.add_argument("--hostname", required=True)
+    p.add_argument("--livestatus-socket", default=None)
+    p.add_argument("--cache-ttl", type=int, default=3600)
+    p.add_argument("--no-available", action="store_true",
+                   help="skip cmk -L (availability check)")
+    p.add_argument("--no-labels", action="store_true",
+                   help="do not collect host labels")
+    p.add_argument("--no-inventory", action="store_true",
+                   help="do not read HW/SW inventory packages")
+    p.add_argument("--db-stats", action="store_true",
+                   help="also emit capability database statistics")
+    p.add_argument("--db-path", default=None,
+                   help="path to the capability database JSON file")
+    p.add_argument("--known-catalog", action="store_true",
+                   help="also emit the known catalog section")
+    p.add_argument("--debug", action="store_true")
+    return p.parse_args(argv)
+
+
+def _omd_root() -> str:
+    return os.environ.get("OMD_ROOT", "")
+
+
+def _livestatus(query: str, socket_path: str, errors: list):
+    try:
+        sock = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+        sock.settimeout(30)
+        sock.connect(socket_path)
+        sock.sendall(query.encode("utf-8"))
+        sock.shutdown(socket.SHUT_WR)
+        chunks = []
+        while True:
+            data = sock.recv(65536)
+            if not data:
+                break
+            chunks.append(data)
+        sock.close()
+        raw = b"".join(chunks).decode("utf-8", "replace").strip()
+        return json.loads(raw) if raw else []
+    except Exception as exc:  # noqa: BLE001
+        errors.append(f"Livestatus query failed: {exc}")
+        return []
+
+
+def monitored_plugins(host: str, socket_path: str, errors: list) -> list:
+    rows = _livestatus(
+        "GET services\nColumns: check_command\n"
+        f"Filter: host_name = {host}\nOutputFormat: json\nResponseHeader: off\n\n",
+        socket_path, errors,
+    )
+    plugins = set()
+    for row in rows:
+        try:
+            cc = str(row[0])
+        except (IndexError, TypeError):
+            continue
+        if cc.startswith("check_mk-"):
+            plugins.add(cc[len("check_mk-"):])
+    return sorted(plugins)
+
+
+def host_labels(host: str, socket_path: str, errors: list) -> dict:
+    rows = _livestatus(
+        "GET hosts\nColumns: labels\n"
+        f"Filter: name = {host}\nOutputFormat: json\nResponseHeader: off\n\n",
+        socket_path, errors,
+    )
+    try:
+        if rows and isinstance(rows[0][0], dict):
+            return {str(k): str(v) for k, v in rows[0][0].items()}
+    except (IndexError, TypeError):
+        pass
+    return {}
+
+
+def _walk_for_packages(node, found: list) -> None:
+    """Recursively search an inventory tree for a 'packages' table's rows."""
+    if not isinstance(node, dict):
+        return
+    nodes = node.get("Nodes")
+    if isinstance(nodes, dict):
+        pkg = nodes.get("packages")
+        if isinstance(pkg, dict):
+            table = pkg.get("Table", {})
+            rows = table.get("Rows", []) if isinstance(table, dict) else []
+            for row in rows:
+                if isinstance(row, dict) and row.get("name"):
+                    found.append(str(row["name"]))
+        for sub in nodes.values():
+            _walk_for_packages(sub, found)
+
+
+def inventory_packages(host: str, errors: list) -> list:
+    omd_root = _omd_root()
+    if not omd_root:
+        return []
+    base = os.path.join(omd_root, "var", "check_mk", "inventory", host)
+    raw = None
+    try:
+        if os.path.isfile(base):
+            with open(base, encoding="utf-8") as fh:
+                raw = fh.read()
+        elif os.path.isfile(base + ".gz"):
+            with gzip.open(base + ".gz", "rt", encoding="utf-8") as fh:
+                raw = fh.read()
+    except Exception as exc:  # noqa: BLE001
+        errors.append(f"Inventory not readable: {exc}")
+        return []
+    if not raw:
+        return []
+    tree = None
+    try:
+        tree = json.loads(raw)
+    except ValueError:
+        try:
+            import ast  # noqa: PLC0415
+            tree = ast.literal_eval(raw)
+        except Exception as exc:  # noqa: BLE001
+            errors.append(f"Inventory not parseable: {exc}")
+            return []
+    found: list = []
+    _walk_for_packages(tree, found)
+    return sorted(set(found))
+
+
+def available_plugins(cache_ttl: int, errors: list) -> list:
+    omd_root = _omd_root()
+    cache_file = os.path.join(omd_root or "/tmp", "tmp",
+                              "monitoring_compliance_plugins.cache")
+    try:
+        if cache_ttl > 0 and os.path.isfile(cache_file):
+            if time.time() - os.path.getmtime(cache_file) < cache_ttl:
+                with open(cache_file, encoding="utf-8") as fh:
+                    cached = json.load(fh)
+                if isinstance(cached, list):
+                    return cached
+    except Exception as exc:  # noqa: BLE001
+        errors.append(f"Plug-in cache not readable: {exc}")
+
+    plugins = set()
+    try:
+        proc = subprocess.run(["cmk", "-L"], capture_output=True, text=True,
+                              timeout=120, check=False)
+        for line in proc.stdout.splitlines():
+            if not line or line.startswith(" "):
+                continue
+            name = line.split()[0]
+            if name:
+                plugins.add(name)
+        if not plugins and proc.stderr:
+            errors.append(f"cmk -L returned no result: {proc.stderr.strip()[:200]}")
+    except Exception as exc:  # noqa: BLE001
+        errors.append(f"cmk -L failed: {exc}")
+
+    result = sorted(plugins)
+    try:
+        if result:
+            os.makedirs(os.path.dirname(cache_file), exist_ok=True)
+            with open(cache_file, "w", encoding="utf-8") as fh:
+                json.dump(result, fh)
+    except Exception:  # noqa: BLE001
+        pass
+    return result
+
+
+def capability_db_stats(db_path: str | None, errors: list) -> dict:
+    if db_path:
+        path = db_path
+    else:
+        omd_root = _omd_root()
+        path = (os.path.join(omd_root, "var", "monitoring_compliance",
+                             "capability_db.json")
+                if omd_root else "")
+    if not path or not os.path.isfile(path):
+        return {"exists": False, "path": path}
+
+    stats: dict = {"exists": True, "path": path}
+    try:
+        stats["size_bytes"] = os.path.getsize(path)
+        with open(path, encoding="utf-8") as fh:
+            db = json.load(fh)
+        caps = db.get("capabilities", {}) if isinstance(db, dict) else {}
+        by_type: dict = {}
+        hosts: set = set()
+        tokens: set = set()
+        monitorable = monitored = 0
+        for rec in caps.values():
+            ctype = str(rec.get("type", "?"))
+            by_type[ctype] = by_type.get(ctype, 0) + 1
+            if rec.get("monitorable"):
+                monitorable += 1
+            if rec.get("monitored"):
+                monitored += 1
+            tok = rec.get("token")
+            if tok:
+                tokens.add(tok)
+            for h in rec.get("hosts", []) or []:
+                hosts.add(h)
+        stats.update({
+            "total": len(caps),
+            "by_type": by_type,
+            "monitorable": monitorable,
+            "monitored": monitored,
+            "hosts": len(hosts),
+            "tokens": len(tokens),
+            "updated_ts": int(db.get("updated_ts", 0)) if isinstance(db, dict) else 0,
+        })
+    except Exception as exc:  # noqa: BLE001
+        errors.append(f"Capability database not readable: {exc}")
+        stats["exists"] = True
+        stats.setdefault("total", 0)
+    return stats
+
+
+def main(argv=None) -> int:
+    args = parse_args(argv if argv is not None else sys.argv[1:])
+    errors: list = []
+
+    socket_path = args.livestatus_socket
+    if not socket_path:
+        omd_root = _omd_root()
+        socket_path = (os.path.join(omd_root, "tmp", "run", "live")
+                       if omd_root else "/omd/sites/%s/tmp/run/live"
+                       % os.environ.get("OMD_SITE", ""))
+
+    mon = monitored_plugins(args.hostname, socket_path, errors)
+    labels = {} if args.no_labels else host_labels(args.hostname, socket_path, errors)
+    inv_pkgs = [] if args.no_inventory else inventory_packages(args.hostname, errors)
+
+    if args.no_available:
+        avail, availability_skipped = [], True
+    else:
+        avail, availability_skipped = available_plugins(args.cache_ttl, errors), False
+
+    payload = {
+        "host": args.hostname,
+        "monitored_plugins": mon,
+        "available_plugins": avail,
+        "availability_skipped": availability_skipped,
+        "host_labels": labels,
+        "inventory_packages": inv_pkgs,
+        "errors": errors,
+    }
+
+    sys.stdout.write("<<<monitoring_compliance_serverinfo:sep(0)>>>\n")
+    sys.stdout.write(json.dumps(payload, ensure_ascii=False))
+    sys.stdout.write("\n")
+
+    if args.db_stats:
+        db_errors: list = []
+        capdb = capability_db_stats(args.db_path, db_errors)
+        capdb["errors"] = db_errors
+        sys.stdout.write("<<<monitoring_compliance_capdb:sep(0)>>>\n")
+        sys.stdout.write(json.dumps(capdb, ensure_ascii=False))
+        sys.stdout.write("\n")
+
+    if args.known_catalog:
+        sys.stdout.write("<<<monitoring_compliance_catalog:sep(0)>>>\n")
+        sys.stdout.write(json.dumps({"available_plugins": avail},
+                                    ensure_ascii=False))
+        sys.stdout.write("\n")
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

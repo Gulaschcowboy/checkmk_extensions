@@ -1,0 +1,30 @@
+title: Checkmk Capability Database
+agents: linux, windows
+catalog: app/checkmk
+license: GPLv2
+distribution:
+description:
+ Reports statistics about the persistent Capability Database that the
+ "Checkmk Monitoring Compliance" check maintains: the file size, the total
+ number of entries, the number of entries per capability type, how many
+ capabilities are monitorable and how many are monitored, the number of
+ distinct hosts and tokens, and the time of the last update.
+
+ The data is read server-side by the special agent. Enable "Report capability
+ database statistics" in the "Checkmk Monitoring Compliance" special-agent
+ rule on exactly one host (for example the Checkmk server host) so that a
+ single instance of this service is created.
+
+ By default the service is {OK}. It reports {WARN} (configurable) when the
+ database file does not exist yet, and optionally {WARN}/{CRIT} when the
+ database has not been updated within a configurable time span.
+
+ Metrics: capability_db_entries, capability_db_size, capability_db_monitorable,
+ capability_db_monitored, capability_db_hosts.
+
+item:
+ No item. There is one service per reporting host.
+
+discovery:
+ One service "Checkmk Capability Database" is created when the special agent
+ emits the statistics section.

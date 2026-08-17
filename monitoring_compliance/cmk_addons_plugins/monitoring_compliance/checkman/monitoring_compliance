@@ -1,0 +1,62 @@
+title: Checkmk Monitoring Compliance
+agents: linux, windows
+catalog: app/checkmk
+license: GPLv2
+distribution:
+description:
+ This service shows, per host, which subsystems are installed or running and
+ could be monitored by Checkmk, but are not yet monitored.
+
+ Detection is capability-based rather than relying on a static application
+ list. Every data source contributes typed capabilities (type + name), which
+ are correlated to the check plug-ins available on the site via a normalized
+ name token and an alias table. Any program whose name matches an available
+ plug-in is therefore detected automatically.
+
+ Detection sources:
+
+ - Existing agent sections that are present on the host.
+ - Running systemd service units (agent plug-in or built-in section) and,
+   on Windows, running services (via the Windows agent plug-in).
+ - Running processes (ps / ps_lnx).
+ - Host labels (read server-side via Livestatus).
+ - Installed packages from the HW/SW inventory (read server-side by the
+   special agent) and from the optional agent plug-ins.
+
+ The check does not bind the cached lnx_packages / win_reg_uninstall agent
+ sections, so the service is driven by live data and recomputes on the normal
+ check interval (and can be rescheduled). Installed-package data still only
+ changes as fast as the HW/SW inventory is refreshed.
+
+ Optional agent plug-ins provide a clean capability section: a shell plug-in
+ for Linux/Unix and a PowerShell plug-in for Windows. Verbose names (e.g.
+ Windows display names such as "Microsoft SQL Server 2019") are matched to
+ plug-in tokens via a signature table.
+
+ A server-side data source (special agent) determines which plug-ins are
+ active on the host, which plug-ins the site knows, the host labels, and the
+ inventory packages.
+
+ All detected capabilities are written to a persistent Capability Database
+ (default $OMD_ROOT/var/monitoring_compliance/capability_db.json). It grows
+ continuously, deduplicates entries by type and name, records on which hosts
+ each capability was seen, and stores whether it is monitorable / monitored.
+
+ Resulting states (overridable via rule):
+
+ - {WARN}: present, not running and not monitored.
+ - {CRIT}: running, but not monitored.
+
+ The metric "compliance_percent" reflects the share of monitored subsystems
+ among the monitorable subsystems present on the host. The service details
+ (long output) list each monitored subsystem (with its plug-in) and each
+ unmonitored subsystem with a hint and a "detected via" breakdown showing the
+ capabilities (process, systemd unit, service, package, label) that triggered
+ it, so the ignore rules can be configured precisely.
+
+item:
+ No item. There is exactly one service per host.
+
+discovery:
+ One service "Checkmk Monitoring Compliance" is created as soon as the
+ server-side data source delivers data.

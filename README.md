@@ -29,6 +29,7 @@ instance were performed by experienced Users. Use at your own risk.
 | [`homeassistant`](homeassistant/) | Home Assistant special agent — reads sensor states via the REST API and area/device metadata via the WebSocket API, groups entities by area into piggyback hosts (`ha-<area>`), with configurable domain filters and safety limits on generated hosts/entities. |
 | [`zfs_arc`](zfs_arc/) | ZFS ARC cache usage (agent-based + Agent-Bakery): monitors ARC size vs. `zfs_arc_max` and RAM, and hit ratio, with independently configurable warn/crit levels, an unconditional throttle-event warning, a heuristic tuning suggestion and graphing. |
 | [`hermes_dashboard`](hermes_dashboard/) | [Hermes Agent](https://hermes-agent.nousresearch.com/) web dashboard monitoring via its REST API (`GET /api/status`) — overall status, gateway process state, per-platform connection status (Telegram/Discord/Slack/...), per-component health (gateway/dashboard/storage/platforms), active sessions, and pending updates. |
+| [`monitoring_compliance`](monitoring_compliance/) | Capability-based detection of installed/running host subsystems that could be monitored by Checkmk but aren't yet — correlates agent sections, systemd/Windows services, processes, host labels and HW/SW inventory packages against available check plug-ins, with a persistent capability database and an informational known-catalog reference service. |
 
 ## Installing a package
 
