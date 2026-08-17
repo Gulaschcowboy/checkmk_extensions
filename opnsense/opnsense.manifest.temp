@@ -5,7 +5,7 @@
                 'uptime, load, memory, swap and filesystem usage. '
                 'Configurable HTTPS port (default 8443) and optional TLS '
                 'certificate check bypass for self-signed certificates.',
- 'download_url': 'https://github.com/adminguru/checkmk-opnsense',
+ 'download_url': 'https://github.com/Gulaschcowboy/checkmk_extensions',
  'files': {'cmk_addons_plugins': ['opnsense/libexec/agent_opnsense',
                                   'opnsense/agent_based/opnsense_firmware.py',
                                   'opnsense/agent_based/opnsense_services.py',
