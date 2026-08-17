@@ -37,8 +37,8 @@ One host runs the special agent against the PBS API; services are auto-discovere
 ## Installation
 
 ```sh
-mkp add proxmox_backup_server_api-1.1.4.mkp
-mkp enable proxmox_backup_server_api 1.1.4
+mkp add proxmox_backup_server_api-1.1.6.mkp
+mkp enable proxmox_backup_server_api 1.1.6
 ```
 
 Then in Checkmk:
@@ -78,6 +78,16 @@ The `PBS Backup Age` service has its own two rulesets:
     key with the usual Checkmk infix behaviour (`vm/` for all VMs,
     `vm/(9000|9001)` for a set, `^ct/300$` for exactly one).
 
+## Changelog
+
+- **1.1.6** — Fixed a `cmk-validate-plugins` error: `check_default_parameters`
+  for `proxmox_backup_server_api_node/_memory/_rootfs/_datastore` used the old
+  bare tuple format (`(80.0, 90.0)`) instead of the `SimpleLevels`-expected
+  `('fixed', (80.0, 90.0))` shape, and `proxmox_backup_server_api_snapshots`
+  shipped a stray `ignore_old_errors: None` default that isn't a valid
+  `TimeSpan` value. Also fixed `full_horizon_days` in the datastore check to
+  go through the same `SimpleLevels`-safe unpacking as the other levels.
+
 ## Layout
 
 ```
@@ -89,5 +99,5 @@ cmk_addons_plugins/proxmox_backup_server_api/
   rulesets/           special-agent + check-parameter rulesets
   server_side_calls/  builds the agent command line
 proxmox_backup_server_api.manifest.temp
-proxmox_backup_server_api-1.1.4.mkp
+proxmox_backup_server_api-1.1.6.mkp
 ```

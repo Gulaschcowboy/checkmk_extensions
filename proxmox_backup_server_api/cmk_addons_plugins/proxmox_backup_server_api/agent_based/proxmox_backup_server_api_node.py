@@ -105,7 +105,7 @@ check_plugin_proxmox_backup_server_api_node = CheckPlugin(
     service_name="PBS Node",
     discovery_function=discover_proxmox_backup_server_api_node,
     check_function=check_proxmox_backup_server_api_node,
-    check_default_parameters={"cpu_levels": (80.0, 90.0)},
+    check_default_parameters={"cpu_levels": ("fixed", (80.0, 90.0))},
     check_ruleset_name="proxmox_backup_server_api_node",
 )
 
@@ -176,7 +176,7 @@ check_plugin_proxmox_backup_server_api_memory = CheckPlugin(
     service_name="PBS Node Memory",
     discovery_function=discover_proxmox_backup_server_api_memory,
     check_function=check_proxmox_backup_server_api_memory,
-    check_default_parameters={"levels": (80.0, 90.0)},
+    check_default_parameters={"levels": ("fixed", (80.0, 90.0))},
     check_ruleset_name="proxmox_backup_server_api_memory",
 )
 
@@ -224,7 +224,7 @@ check_plugin_proxmox_backup_server_api_rootfs = CheckPlugin(
     service_name="PBS Node Root FS",
     discovery_function=discover_proxmox_backup_server_api_rootfs,
     check_function=check_proxmox_backup_server_api_rootfs,
-    check_default_parameters={"levels": (80.0, 90.0)},
+    check_default_parameters={"levels": ("fixed", (80.0, 90.0))},
     check_ruleset_name="proxmox_backup_server_api_rootfs",
 )
 

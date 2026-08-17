@@ -114,7 +114,11 @@ def check_proxmox_backup_server_api_datastore(item, params, section):
     if efd and efd > 0:
         remaining = efd - time.time()
         if remaining > 0:
-            warn_days, crit_days = params.get("full_horizon_days", (30, 7))
+            warn_days, crit_days = _norm_levels(
+                params.get("full_horizon_days", ("fixed", (30, 7)))
+            )
+            if warn_days is None:
+                warn_days, crit_days = (30, 7)
             state = State.OK
             if remaining < crit_days * 86400:
                 state = State.CRIT
@@ -134,6 +138,9 @@ check_plugin_proxmox_backup_server_api_datastore = CheckPlugin(
     service_name="PBS Datastore %s",
     discovery_function=discover_proxmox_backup_server_api_datastore,
     check_function=check_proxmox_backup_server_api_datastore,
-    check_default_parameters={"levels": (80.0, 90.0), "full_horizon_days": (30, 7)},
+    check_default_parameters={
+        "levels": ("fixed", (80.0, 90.0)),
+        "full_horizon_days": ("fixed", (30, 7)),
+    },
     check_ruleset_name="proxmox_backup_server_api_datastore",
 )

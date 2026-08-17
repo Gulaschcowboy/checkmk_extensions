@@ -246,7 +246,6 @@ check_plugin_proxmox_backup_server_api_snapshots = CheckPlugin(
     check_default_parameters={
         "err_days": ("fixed", (2 * 86400.0, 10 * 86400.0)),
         "throw_warnings": True,
-        "ignore_old_errors": None,
         "ignore_groups": [],
     },
 )
