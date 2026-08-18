@@ -177,6 +177,8 @@ _SIGNATURES_RAW: tuple[tuple[str, str], ...] = (
     (r"\bisc-dhcp-client\b", "iscdhcpclient"),
     (r"\bisc-dhcp-common\b", "iscdhcpcommon"),
     (r"\bisc-dhcp-server\b", "isc"),
+    (r"\bceph-common\b", "cephclient"),
+    (r"\bceph-fuse\b", "cephclient"),
     (r"oracle database", "oracle"),
     (r"\boracle\b", "oracle"),
 )
