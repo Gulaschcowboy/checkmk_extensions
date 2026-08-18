@@ -1,5 +1,9 @@
 # Checkmk Monitoring Compliance
 
+**Status: Work in progress.** The client/server package-detection logic is
+still being hardened case-by-case (see Changelog) — false positives may
+still exist for application types not yet covered. Use with that in mind.
+
 Detects installed and/or running services on a host that are not yet monitored,
 even though a suitable Checkmk plug-in is available on the server. The result
 is a **"Checkmk Monitoring Compliance"** service with WARN/CRIT logic and a
@@ -64,6 +68,29 @@ mkp enable monitoring_compliance 1.5.9
 
 ## Changelog
 
+- **1.5.15** — Fixed a false positive where Ceph client-side tooling
+  (`ceph-common`, `ceph-fuse`) was tokenized to the same canonical token as
+  the actual Ceph server/daemon packages, so hosts with only client-side
+  Ceph tooling installed were falsely reported as having available
+  `ceph_df`/`ceph_status`/`ceph_status_mgrs` server plug-ins. Client-side
+  packages now resolve to a distinct token.
+- **1.5.14** — Fixed a false positive where the RabbitMQ client library
+  package (`librabbitmq4`) was tokenized to the same canonical token as the
+  actual `rabbitmq-server` package, incorrectly reporting an "available"
+  RabbitMQ server plug-in on hosts that only have the client library
+  installed. The client library now resolves to a distinct token.
+- **1.5.13** — Fixed a false positive where the ISC DHCP client/common
+  packages (`isc-dhcp-client`, `isc-dhcp-common`) were tokenized to the same
+  canonical token as the actual `isc-dhcp-server` package, incorrectly
+  reporting an "available" `isc_dhcpd` plug-in on hosts that only have the
+  DHCP client installed. Client/common packages now resolve to distinct
+  tokens.
+- **1.5.11** — Fixed a false positive where the NFS client package
+  (`nfs-common`) and its `nfs-blkmap.service` boot-time unit were tokenized
+  to the same canonical token as the actual NFS server (`nfs-kernel-server`/
+  `nfs-server`), incorrectly reporting an "available" NFS exports plug-in on
+  pure NFS-client hosts. NFS server evidence is now derived specifically
+  from the `nfs-server`/`nfs-kernel-server` systemd unit or package name.
 - **1.5.9** — Kernel/library-only features (LVM, ZFS) are no longer flagged
   as an unmonitored finding merely because the package is installed or an
   always-on boot hook unit exists. We now require corroborating evidence of
