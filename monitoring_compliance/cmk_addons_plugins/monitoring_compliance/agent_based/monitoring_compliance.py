@@ -57,6 +57,18 @@ T_PACKAGE = "package"
 RUNNING_TYPES = {T_PROCESS, T_SYSTEMD, T_SERVICE, T_SECTION}
 INSTALLED_TYPES = {T_PACKAGE, T_INV_PACKAGE}
 
+# Some subsystems are kernel/library features rather than a running service:
+# the package (and any always-on boot hook units, see
+# SYSTEMD_ALWAYS_ON_UNITS below) can be present on virtually every host of a
+# distro family without the feature ever being *used*. For these tokens,
+# package/inventory presence alone is not treated as evidence of actual use;
+# we additionally require corroborating evidence from the already-collected
+# "df" section (mounted filesystems), which every host reports anyway - no
+# extra agent plug-in needed. If that evidence is missing, the capability is
+# dropped entirely (not just downgraded), matching what a human investigating
+# the host would conclude ("installed but never touched").
+TOKENS_REQUIRE_USAGE_EVIDENCE: frozenset[str] = frozenset({"lvm", "zfs"})
+
 # ---------------------------------------------------------------------------
 # Seed knowledge: aliases (raw token -> canonical token), nice titles, hints.
 # This is only used to improve naming/precision; correlation itself works
@@ -121,6 +133,13 @@ STOP_TOKENS = {
     "livestatus", "omd", "chrony", "ntp", "cron", "ssh", "sshd", "users",
     "threads", "vmstat", "swap", "fileinfo", "logwatch", "md", "multipath",
     "tcpconn", "netif", "if", "interfaces", "hr", "snmp",
+    # Generic name fragments that happen to be the leading token of a very
+    # specific hardware/vendor plug-in (e.g. "intel_true_scale_chassis_temp")
+    # but say nothing meaningful when they show up as a package/process name
+    # fragment (e.g. package "intel-microcode"). Without this, the naive
+    # leading-token tokenizer used on both sides collides purely by
+    # coincidence and reports a false "available plug-in".
+    "intel",
 }
 
 # Substring / word signatures for matching verbose names (especially Windows
@@ -157,6 +176,41 @@ _SIGNATURES_RAW: tuple[tuple[str, str], ...] = (
 SIGNATURES: tuple[tuple[Any, str], ...] = tuple(
     (re.compile(pat, re.IGNORECASE), tok) for pat, tok in _SIGNATURES_RAW
 )
+
+# systemd units that are part of a package's standard boot-time housekeeping
+# and settle into "loaded active" on virtually every install of that package,
+# regardless of whether the feature is actually used (no matching
+# ConditionPathExists=/ConditionDirectoryNotEmpty=/... to gate them). Unlike
+# e.g. zfs-import-scan.service (skipped/inactive without an importable pool),
+# these carry no signal that the subsystem is in active use, so they must not
+# be treated as evidence of a running capability.
+# NOTE: names here are WITHOUT the unit-type suffix (.service/.socket/...),
+# matching how cmk.plugins.collection.agent_based.systemd_units.UnitEntry.name
+# is parsed (suffix is split off separately as the unit type).
+SYSTEMD_ALWAYS_ON_UNITS: frozenset[str] = frozenset({
+    # LVM2's dmeventd/activation/polling hooks ship - and are enabled - with
+    # the base "lvm2" package on Debian/Ubuntu and run at every boot even on
+    # hosts with no volume group at all.
+    "lvm2-monitor",
+    "lvm2-lvmpolld",
+    "lvm2-activation-early",
+    "lvm2-activation",
+    "lvm2-activation-net",
+})
+
+# Prefix families that behave the same way as SYSTEMD_ALWAYS_ON_UNITS above,
+# but have too many differently-named instances to enumerate individually
+# (e.g. distro/version-specific "lvm2-*" boot hooks). Matched with
+# str.startswith() against the unit name (without type suffix).
+SYSTEMD_ALWAYS_ON_PREFIXES: tuple[str, ...] = (
+    "lvm2-",
+)
+
+
+def _is_always_on_unit(name: str) -> bool:
+    if name in SYSTEMD_ALWAYS_ON_UNITS:
+        return True
+    return any(name.startswith(p) for p in SYSTEMD_ALWAYS_ON_PREFIXES)
 
 
 # ---------------------------------------------------------------------------
@@ -271,7 +325,29 @@ def _names_from_section(section: Any, keys: Sequence[str]) -> set[str]:
 
 
 def _systemd_units(section: Any) -> set[str]:
-    """Best-effort unit names from the built-in systemd_units section."""
+    """Unit names from the built-in systemd_units section that are actually
+    present and active right now.
+
+    The raw section lists every unit systemd knows about, which includes a
+    lot of noise that must NOT be treated as "this application is running":
+
+      - "not-found" units (LOAD=not-found): pure ghost references pulled in
+        via another unit's Wants=/After=, the software itself was never
+        installed (e.g. a stray "postfix.service" on a host without mail
+        server, or "nfs-server.service" without NFS installed).
+      - "masked" units (LOAD=masked): explicitly disabled, cannot run.
+      - Template units without an instance (name ends in "@", e.g.
+        "openvpn@.service", "zfs-mount@.service"): these can never be
+        active themselves, only concrete instances like "openvpn@foo" can.
+
+    LOAD=loaded + ACTIVE=active is the correct signal regardless of the
+    low-level SUB state: boot-time oneshot units for real, in-use software
+    correctly settle into "active exited" (e.g. zfs-mount.service,
+    zfs-share.service on a host with an imported zpool) just like
+    long-running daemons show "active running" (e.g. zfs-zed.service).
+    ENABLED status (enabled/disabled/static/generated) says nothing about
+    whether the unit is currently in use and is intentionally ignored here.
+    """
     names: set[str] = set()
     if not section:
         return names
@@ -294,8 +370,31 @@ def _systemd_units(section: Any) -> set[str]:
         try:
             name = (getattr(entry, "name", None)
                     or (entry.get("name") if isinstance(entry, Mapping) else None))
-            if name:
-                names.add(str(name))
+            if not name:
+                continue
+            name = str(name)
+            # Template unit without an instance (e.g. "openvpn@") can never
+            # be active by itself - only a concrete instance could be.
+            if name.endswith("@"):
+                continue
+            loaded_status = (getattr(entry, "loaded_status", None)
+                              or (entry.get("loaded_status") if isinstance(entry, Mapping) else None))
+            active_status = (getattr(entry, "active_status", None)
+                              or (entry.get("active_status") if isinstance(entry, Mapping) else None))
+            # If we can't read the state at all, fall back to the old
+            # name-only behaviour rather than silently dropping everything
+            # (keeps this robust against unexpected section shapes).
+            if loaded_status is None and active_status is None:
+                if not _is_always_on_unit(name):
+                    names.add(name)
+                continue
+            if str(loaded_status) != "loaded":
+                continue
+            if str(active_status) != "active":
+                continue
+            if _is_always_on_unit(name):
+                continue
+            names.add(name)
         except Exception:  # noqa: BLE001
             continue
     return names
@@ -304,6 +403,59 @@ def _systemd_units(section: Any) -> set[str]:
 # ---------------------------------------------------------------------------
 # Capability collection
 # ---------------------------------------------------------------------------
+
+def _usage_evidence_from_df(section_df: Any, section_zfsget: Any = None) -> frozenset[str]:
+    """Derive real-usage evidence for kernel/storage features from
+    already-collected agent sections - no extra agent plug-in required.
+
+    - "zfs":  any mounted filesystem has fs_type == "zfs" in the "df" section,
+              OR the "zfsget" section (checkmk's own zfs list parser) has at
+              least one parsed dataset. The df route alone is not reliable
+              here: on some hosts (observed on Proxmox VE with a ZFS root
+              pool) the agent's df output omits ZFS-backed mounts entirely,
+              even though ZFS is actively used - zfsget is the direct,
+              ZFS-native usage signal for that case.
+    - "lvm":  any mounted filesystem's device is an LVM-managed block device,
+              i.e. /dev/mapper/<vg>-<lv> or /dev/dm-<N> (the device naming
+              the kernel itself uses for active LVM logical volumes).
+    """
+    evidence: set[str] = set()
+    if section_df:
+        blocks: Any = section_df
+        # cmk.plugins.lib.df.DfSection is (BlocksSubsection, InodesSubsection);
+        # be defensive about other/older shapes too.
+        if isinstance(section_df, tuple) and len(section_df) == 2:
+            blocks = section_df[0]
+        try:
+            iterator = iter(blocks)
+        except TypeError:
+            iterator = iter(())
+        for entry in iterator:
+            try:
+                device = str(getattr(entry, "device", None)
+                            or (entry.get("device") if isinstance(entry, Mapping) else "") or "")
+                fs_type = str(getattr(entry, "fs_type", None)
+                             or (entry.get("fs_type") if isinstance(entry, Mapping) else "") or "")
+            except Exception:  # noqa: BLE001
+                continue
+            if fs_type.lower() == "zfs":
+                evidence.add("zfs")
+            if device.startswith("/dev/mapper/") or re.match(r"^/dev/dm-\d+$", device):
+                evidence.add("lvm")
+
+    if section_zfsget:
+        # section_zfsget is the *parsed* "zfsget" AgentSection, a mapping of
+        # mountpoint -> FSBlock (mountpoint, size_mb, avail_mb, reserved).
+        # Any entry at all means the agent found real ZFS datasets - the
+        # zfsget plug-in's own parser already collapsed name/type/mountpoint
+        # into this mapping, so simply being present is the usage signal.
+        try:
+            if len(section_zfsget) > 0:
+                evidence.add("zfs")
+        except TypeError:
+            pass
+    return frozenset(evidence)
+
 
 def _collect_capabilities(
     serverinfo: Mapping[str, Any],
@@ -527,6 +679,8 @@ def discover_monitoring_compliance(
     section_monitoring_compliance_inventory,
     section_ps,
     section_systemd_units,
+    section_df,
+    section_zfsget,
 ) -> DiscoveryResult:
     if section_monitoring_compliance_serverinfo is not None:
         yield Service()
@@ -538,6 +692,8 @@ def check_monitoring_compliance(
     section_monitoring_compliance_inventory,
     section_ps,
     section_systemd_units,
+    section_df,
+    section_zfsget,
 ) -> CheckResult:
     info = section_monitoring_compliance_serverinfo
     if info is None:
@@ -576,6 +732,8 @@ def check_monitoring_compliance(
     ign_prog = _compile(params.get("ignored_programs", []) or [])
     custom_rules = list(params.get("custom_catalog", []) or [])
 
+    usage_evidence = _usage_evidence_from_df(section_df, section_zfsget)
+
     state_running = State(int(params.get("state_running_unmonitored", 2)))
     state_installed = State(int(params.get("state_installed_unmonitored", 1)))
     info_only = bool(params.get("informational_only"))
@@ -611,6 +769,12 @@ def check_monitoring_compliance(
         if not token or token in STOP_TOKENS:
             continue
         if not monitorable:
+            continue
+        # Kernel/library features (LVM, ZFS, ...): package/inventory presence
+        # alone proves nothing was ever actually used. Require corroborating
+        # evidence from the df section; drop the capability entirely if that
+        # evidence is missing, regardless of which source found it.
+        if token in TOKENS_REQUIRE_USAGE_EVIDENCE and token not in usage_evidence:
             continue
 
         app = apps.setdefault(token, {
@@ -713,6 +877,8 @@ check_plugin_monitoring_compliance = CheckPlugin(
         "monitoring_compliance_inventory",
         "ps",
         "systemd_units",
+        "df",
+        "zfsget",
     ],
     service_name="Checkmk Monitoring Compliance",
     discovery_function=discover_monitoring_compliance,

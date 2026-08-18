@@ -120,14 +120,27 @@ def inventory_packages(host: str, errors: list) -> list:
     if not omd_root:
         return []
     base = os.path.join(omd_root, "var", "check_mk", "inventory", host)
+    # Modern Checkmk (>=2.2) stores the inventory tree as "<host>.json"
+    # (optionally gzip-compressed as "<host>.json.gz"); older versions used
+    # the bare "<host>" / "<host>.gz". Try all known layouts.
+    candidates = [
+        (base + ".json", False),
+        (base + ".json.gz", True),
+        (base, False),
+        (base + ".gz", True),
+    ]
     raw = None
     try:
-        if os.path.isfile(base):
-            with open(base, encoding="utf-8") as fh:
-                raw = fh.read()
-        elif os.path.isfile(base + ".gz"):
-            with gzip.open(base + ".gz", "rt", encoding="utf-8") as fh:
-                raw = fh.read()
+        for path, gz in candidates:
+            if not os.path.isfile(path):
+                continue
+            if gz:
+                with gzip.open(path, "rt", encoding="utf-8") as fh:
+                    raw = fh.read()
+            else:
+                with open(path, encoding="utf-8") as fh:
+                    raw = fh.read()
+            break
     except Exception as exc:  # noqa: BLE001
         errors.append(f"Inventory not readable: {exc}")
         return []
@@ -143,6 +156,11 @@ def inventory_packages(host: str, errors: list) -> list:
         except Exception as exc:  # noqa: BLE001
             errors.append(f"Inventory not parseable: {exc}")
             return []
+    # Modern Checkmk wraps the actual inventory tree in a "raw_tree" key
+    # alongside "meta" (retention/update metadata); older exports may be
+    # the raw tree directly at the top level.
+    if isinstance(tree, dict) and "raw_tree" in tree and "meta" in tree:
+        tree = tree["raw_tree"]
     found: list = []
     _walk_for_packages(tree, found)
     return sorted(set(found))

@@ -58,6 +58,55 @@ changes as fast as the HW/SW inventory is refreshed.
 ## Installing
 
 ```
-mkp add monitoring_compliance-1.5.3.mkp
-mkp enable monitoring_compliance 1.5.3
+mkp add monitoring_compliance-1.5.9.mkp
+mkp enable monitoring_compliance 1.5.9
 ```
+
+## Changelog
+
+- **1.5.9** — Kernel/library-only features (LVM, ZFS) are no longer flagged
+  as an unmonitored finding merely because the package is installed or an
+  always-on boot hook unit exists. We now require corroborating evidence of
+  actual use from the already-collected `df` section (no extra agent
+  plug-in): a mounted filesystem with `fs_type == "zfs"`, or a mounted
+  LVM-managed block device (`/dev/mapper/<vg>-<lv>` or `/dev/dm-<N>`). Without
+  that evidence the capability is dropped entirely, eliminating false
+  positives on hosts where the package is present but never actually used.
+- **1.5.8** — Fixed a false positive where the generic package/process
+  tokenizer collided by coincidence: an installed package `intel-microcode`
+  was tokenized to `intel`, which is also the leading token of the
+  hardware-specific `intel_true_scale_*` plug-in family, so it was
+  incorrectly reported as an "available plug-in" for that package. `intel`
+  is now excluded via `STOP_TOKENS`, the same mechanism already used to
+  filter other generic/base-OS token collisions (`cpu`, `mem`, `kernel`, ...).
+- **1.5.7** — Fixed HW/SW inventory package detection: the server-side agent
+  was looking for the inventory file at `var/check_mk/inventory/<host>`
+  (bare/`.gz`), but modern Checkmk (>=2.2) stores it as
+  `<host>.json`/`<host>.json.gz` with the actual tree nested one level
+  deeper under a `raw_tree` key alongside `meta`. Both bugs meant
+  `inventory_packages` always silently returned an empty list, so
+  inventory-only subsystems (e.g. `apt`) were never picked up as a
+  capability even though they were clearly visible in the HW/SW Inventory
+  itself. Now reads `<host>.json[.gz]` (falling back to the legacy
+  extension-less layout) and unwraps `raw_tree` when present.
+- **1.5.6** — Fixed a remaining LVM2 false positive: `lvm2-activation-early`
+  (and other distro-specific `lvm2-*` boot hooks not covered by the 1.5.5
+  fixed name list) are now caught by a generic `lvm2-` prefix match instead
+  of an exact-name list, since the whole `lvm2-*` unit family behaves the
+  same way (always "loaded active" regardless of actual LVM usage).
+- **1.5.5** — Fixed a false positive on `lvm2-monitor.service` (and its
+  sibling `lvm2-lvmpolld` units): these are boot-time housekeeping units
+  from the base `lvm2` package that show "loaded active" on virtually
+  every Debian/Ubuntu host, even with no LVM volume group in use at all
+  (unlike ZFS's import units, they have no condition that gates them on
+  actual usage). They are now excluded from systemd-unit-based capability
+  detection.
+- **1.5.4** — Fixed false positives from the built-in `systemd_units` section:
+  units are now only counted when actually present and active (loaded +
+  active running, or loaded + active exited for legitimate oneshot units),
+  instead of matching on unit name alone. This eliminates spurious findings
+  from masked units, template unit instances (`name@instance.service`,
+  e.g. `heartbeat-failed@frr.service` wrongly matching a "Heartbeat"
+  capability), and units reported by systemd but not actually loaded
+  (`not-found`/inactive/dead, e.g. leftover OnFailure= hooks).
+
