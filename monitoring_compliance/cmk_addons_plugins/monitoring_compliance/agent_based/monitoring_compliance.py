@@ -87,7 +87,7 @@ ALIASES: dict[str, str] = {
     "elasticsearch": "elasticsearch",
     "haproxy": "haproxy",
     "postfix": "postfix",
-    "nfsd": "nfsexports", "nfs": "nfsexports",
+    "nfsd": "nfsexports",
     "catalina": "jolokia", "tomcat": "jolokia", "jolokia": "jolokia",
     "ora": "oracle", "oracle": "oracle", "pmon": "oracle",
     "sqlservr": "mssql", "mssql": "mssql",
@@ -170,6 +170,8 @@ _SIGNATURES_RAW: tuple[tuple[str, str], ...] = (
     (r"elasticsearch", "elasticsearch"),
     (r"\bhaproxy\b", "haproxy"),
     (r"\bpostfix\b", "postfix"),
+    (r"\bnfs-kernel-server\b", "nfsexports"),
+    (r"\bnfs-server\b", "nfsexports"),
     (r"oracle database", "oracle"),
     (r"\boracle\b", "oracle"),
 )
