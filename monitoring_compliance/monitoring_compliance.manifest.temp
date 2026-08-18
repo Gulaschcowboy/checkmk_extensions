@@ -34,7 +34,7 @@
                                   'monitoring_compliance/libexec/agent_monitoring_compliance'],
            'lib': ['python3/cmk/base/cee/plugins/bakery/monitoring_compliance.py']},
  'name': 'monitoring_compliance',
- 'title': 'Checkmk Monitoring Compliance (WIP)',
+ 'title': 'Checkmk Monitoring Compliance',
  'version': '1.5.15',
  'version.min_required': '2.3.0p1',
  'version.packaged': 'manual-build',

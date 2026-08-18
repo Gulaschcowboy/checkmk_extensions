@@ -1,9 +1,5 @@
 # Checkmk Monitoring Compliance
 
-**Status: Work in progress.** The client/server package-detection logic is
-still being hardened case-by-case (see Changelog) — false positives may
-still exist for application types not yet covered. Use with that in mind.
-
 Detects installed and/or running services on a host that are not yet monitored,
 even though a suitable Checkmk plug-in is available on the server. The result
 is a **"Checkmk Monitoring Compliance"** service with WARN/CRIT logic and a
