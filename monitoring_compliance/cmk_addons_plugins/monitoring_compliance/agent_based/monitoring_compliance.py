@@ -172,6 +172,9 @@ _SIGNATURES_RAW: tuple[tuple[str, str], ...] = (
     (r"\bpostfix\b", "postfix"),
     (r"\bnfs-kernel-server\b", "nfsexports"),
     (r"\bnfs-server\b", "nfsexports"),
+    (r"\bisc-dhcp-client\b", "iscdhcpclient"),
+    (r"\bisc-dhcp-common\b", "iscdhcpcommon"),
+    (r"\bisc-dhcp-server\b", "isc"),
     (r"oracle database", "oracle"),
     (r"\boracle\b", "oracle"),
 )
