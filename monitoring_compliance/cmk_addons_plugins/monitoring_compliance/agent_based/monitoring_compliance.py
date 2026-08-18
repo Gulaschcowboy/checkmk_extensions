@@ -166,6 +166,8 @@ _SIGNATURES_RAW: tuple[tuple[str, str], ...] = (
     (r"\bredis\b", "redis"),
     (r"mongo", "mongodb"),
     (r"\bdocker\b", "docker"),
+    (r"\blibrabbitmq\d*\b", "librabbitmqclient"),
+    (r"rabbitmq-server", "rabbitmq"),
     (r"rabbitmq", "rabbitmq"),
     (r"elasticsearch", "elasticsearch"),
     (r"\bhaproxy\b", "haproxy"),
