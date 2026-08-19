@@ -67,7 +67,7 @@ INSTALLED_TYPES = {T_PACKAGE, T_INV_PACKAGE}
 # extra agent plug-in needed. If that evidence is missing, the capability is
 # dropped entirely (not just downgraded), matching what a human investigating
 # the host would conclude ("installed but never touched").
-TOKENS_REQUIRE_USAGE_EVIDENCE: frozenset[str] = frozenset({"lvm", "zfs"})
+TOKENS_REQUIRE_USAGE_EVIDENCE: frozenset[str] = frozenset({"lvm", "zfs", "corosync"})
 
 # ---------------------------------------------------------------------------
 # Seed knowledge: aliases (raw token -> canonical token), nice titles, hints.
@@ -421,7 +421,11 @@ def _systemd_units(section: Any) -> set[str]:
 # Capability collection
 # ---------------------------------------------------------------------------
 
-def _usage_evidence_from_df(section_df: Any, section_zfsget: Any = None) -> frozenset[str]:
+def _usage_evidence_from_df(
+    section_df: Any,
+    section_zfsget: Any = None,
+    section_systemd_units: Any = None,
+) -> frozenset[str]:
     """Derive real-usage evidence for kernel/storage features from
     already-collected agent sections - no extra agent plug-in required.
 
@@ -435,6 +439,12 @@ def _usage_evidence_from_df(section_df: Any, section_zfsget: Any = None) -> froz
     - "lvm":  any mounted filesystem's device is an LVM-managed block device,
               i.e. /dev/mapper/<vg>-<lv> or /dev/dm-<N> (the device naming
               the kernel itself uses for active LVM logical volumes).
+    - "corosync": the corosync.service systemd unit is actually loaded+active
+              right now (see _systemd_units()). The corosync *package* alone
+              is not evidence of cluster usage - on Proxmox VE it is a
+              standard dependency pulled in on every install, clustered or
+              not, so the package being present says nothing about whether
+              this host is part of a cluster.
     """
     evidence: set[str] = set()
     if section_df:
@@ -471,6 +481,10 @@ def _usage_evidence_from_df(section_df: Any, section_zfsget: Any = None) -> froz
                 evidence.add("zfs")
         except TypeError:
             pass
+
+    if "corosync.service" in _systemd_units(section_systemd_units):
+        evidence.add("corosync")
+
     return frozenset(evidence)
 
 
@@ -749,7 +763,7 @@ def check_monitoring_compliance(
     ign_prog = _compile(params.get("ignored_programs", []) or [])
     custom_rules = list(params.get("custom_catalog", []) or [])
 
-    usage_evidence = _usage_evidence_from_df(section_df, section_zfsget)
+    usage_evidence = _usage_evidence_from_df(section_df, section_zfsget, section_systemd_units)
 
     state_running = State(int(params.get("state_running_unmonitored", 2)))
     state_installed = State(int(params.get("state_installed_unmonitored", 1)))
