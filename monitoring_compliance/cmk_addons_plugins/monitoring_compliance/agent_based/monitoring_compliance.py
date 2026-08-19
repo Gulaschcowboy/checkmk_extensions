@@ -97,6 +97,10 @@ EVIDENCE_EXCLUDE: dict[str, "re.Pattern[str]"] = {
         r"^nut$|^nut-client(\.(service|path))?$|^nut-monitor(\.service)?$",
         re.IGNORECASE,
     ),
+    "apache": re.compile(
+        r"^apache2-utils$|^apache2-bin$|^httpd-tools$",
+        re.IGNORECASE,
+    ),
 }
 # Backwards-compatible alias (kept in case other code/tests reference the old
 # name); both names point at the same dict.
