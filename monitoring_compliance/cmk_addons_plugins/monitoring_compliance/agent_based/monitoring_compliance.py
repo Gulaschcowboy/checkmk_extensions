@@ -77,13 +77,30 @@ TOKENS_REQUIRE_USAGE_EVIDENCE: frozenset[str] = frozenset({"lvm", "zfs", "corosy
 # not counted as installation evidence; a real server package (e.g.
 # "mariadb-server", "mysql-server") or running evidence (systemd unit/process
 # via ALIASES, e.g. "mariadbd"/"mysqld") is still required.
-PACKAGE_EVIDENCE_EXCLUDE: dict[str, "re.Pattern[str]"] = {
+# Some packages/inventory hits and even systemd units/processes are
+# client-only components that ship for every host regardless of whether the
+# corresponding *server* is present (e.g. "mysql-common"/"mariadb-common"
+# pull in for any package that merely links against the client library; NUT's
+# "nut-client"/"nut-monitor" client-side UPS-status monitor commonly run on
+# any host regardless of whether a local NUT *server* (upsd) is configured).
+# Package/inv_package/systemd-unit/process names matching these per-token
+# patterns are therefore not counted as installation or running evidence; a
+# real server package/unit/process (e.g. "mariadb-server"/"mysqld",
+# "nut-server"/"nut-driver@*"/"upsd") is still required.
+EVIDENCE_EXCLUDE: dict[str, "re.Pattern[str]"] = {
     "mysql": re.compile(
         r"(?:^|[-_])(?:common|client|clients)(?:[-_]|$)|^lib(?:mysqlclient|mariadb)\d*"
         r"|^libdbd-mysql-perl$",
         re.IGNORECASE,
     ),
+    "nut": re.compile(
+        r"^nut$|^nut-client(\.(service|path))?$|^nut-monitor(\.service)?$",
+        re.IGNORECASE,
+    ),
 }
+# Backwards-compatible alias (kept in case other code/tests reference the old
+# name); both names point at the same dict.
+PACKAGE_EVIDENCE_EXCLUDE = EVIDENCE_EXCLUDE
 
 # ---------------------------------------------------------------------------
 # Seed knowledge: aliases (raw token -> canonical token), nice titles, hints.
@@ -862,12 +879,12 @@ def check_monitoring_compliance(
             continue
         if not monitorable:
             continue
-        # Client-only libraries/tools (e.g. "mysql-common") must not count as
-        # evidence that the corresponding server is installed.
-        if ctype in INSTALLED_TYPES:
-            excl = PACKAGE_EVIDENCE_EXCLUDE.get(token)
-            if excl and excl.search(name):
-                continue
+        # Client-only packages/units/processes (e.g. "mysql-common",
+        # "nut-client"/"nut-monitor") must not count as evidence that the
+        # corresponding server is installed or running.
+        excl = EVIDENCE_EXCLUDE.get(token)
+        if excl and excl.search(name):
+            continue
         # Kernel/library features (LVM, ZFS, ...): package/inventory presence
         # alone proves nothing was ever actually used. Require corroborating
         # evidence from the df section; drop the capability entirely if that
