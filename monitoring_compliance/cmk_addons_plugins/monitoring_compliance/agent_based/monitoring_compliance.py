@@ -130,6 +130,7 @@ ALIASES: dict[str, str] = {
     "sqlservr": "mssql", "mssql": "mssql",
     "w3wp": "iis", "inetinfo": "iis", "iis": "iis",
     "msexchange": "msexch", "edgetransport": "msexch", "exchange": "msexch",
+    "pdns": "powerdns", "powerdns": "powerdns",
 }
 
 TITLES: dict[str, str] = {
@@ -140,6 +141,7 @@ TITLES: dict[str, str] = {
     "nfsexports": "NFS Server", "jolokia": "Java / Tomcat (Jolokia)",
     "oracle": "Oracle Database", "mssql": "Microsoft SQL Server",
     "iis": "Microsoft IIS", "msexch": "Microsoft Exchange",
+    "powerdns": "PowerDNS",
 }
 
 HINTS: dict[str, str] = {
@@ -160,6 +162,7 @@ HINTS: dict[str, str] = {
     "mssql": "Deploy the 'mssql.vbs' agent plug-in, then run discovery.",
     "iis": "Deploy the agent plug-in for IIS application pools.",
     "msexch": "Deploy the Exchange counter plug-ins, then run discovery.",
+    "powerdns": "Deploy the 'powerdns' agent plug-in, then run discovery.",
 }
 
 # Generic Checkmk plug-in tokens that should never be treated as an
