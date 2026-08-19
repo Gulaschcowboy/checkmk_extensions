@@ -140,6 +140,14 @@ STOP_TOKENS = {
     # leading-token tokenizer used on both sides collides purely by
     # coincidence and reports a false "available plug-in".
     "intel",
+    # "watchdog" is the leading token of both the systemd hardware-watchdog
+    # multiplexer ("watchdog-mux.service", part of the base "watchdog"
+    # package, unrelated to any monitored subsystem) and the unrelated
+    # environmental-sensor check plug-ins "watchdog_sensors*" (Watchdog Inc.
+    # weather-station hardware). Pure leading-token coincidence, not a
+    # covering plug-in relationship - same class of false positive as
+    # "intel" above.
+    "watchdog",
 }
 
 # Substring / word signatures for matching verbose names (especially Windows
