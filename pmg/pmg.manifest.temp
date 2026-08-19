@@ -34,7 +34,7 @@
                                   'pmg/checkman/pmg_certificates']},
  'name': 'pmg',
  'title': 'Proxmox Mail Gateway (REST API)',
- 'version': '1.0.3',
+ 'version': '1.0.4',
  'version.min_required': '2.3.0b1',
  'version.packaged': 'hermes',
  'version.usable_until': None}

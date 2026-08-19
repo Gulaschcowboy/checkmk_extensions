@@ -11,6 +11,7 @@ from cmk.graphing.v1.metrics import (
     TimeNotation,
 )
 from cmk.graphing.v1.graphs import Graph, MinimalRange
+from cmk.graphing.v1.metrics import WarningOf, CriticalOf
 from cmk.graphing.v1.perfometers import Perfometer, FocusRange, Closed, Open
 
 UNIT_COUNT = Unit(DecimalNotation(""))
@@ -38,7 +39,7 @@ metric_mail_count = Metric(
 )
 metric_mail_junk_percent = Metric(
     name="mail_junk_percent",
-    title=Title("Junk ratio (spam + virus)"),
+    title=Title("Junk ratio (PMG-reported)"),
     unit=UNIT_PERCENT,
     color=Color.ORANGE,
 )
@@ -136,9 +137,15 @@ graph_pmg_mail_counts = Graph(
 
 graph_pmg_junk_ratio = Graph(
     name="pmg_junk_ratio",
-    title=Title("PMG spam/virus ratio"),
+    title=Title("PMG junk/spam/virus ratio"),
     minimal_range=MinimalRange(0, 100),
-    simple_lines=["mail_spam_percent", "mail_virus_percent", "mail_junk_percent"],
+    simple_lines=[
+        "mail_spam_percent",
+        "mail_virus_percent",
+        "mail_junk_percent",
+        WarningOf("mail_junk_percent"),
+        CriticalOf("mail_junk_percent"),
+    ],
 )
 
 perfometer_mail_queue_length = Perfometer(

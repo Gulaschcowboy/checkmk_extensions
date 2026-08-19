@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """WATO ruleset for the Proxmox Mail Gateway (PMG) special agent."""
-from cmk.rulesets.v1 import Help, Title
+from cmk.rulesets.v1 import Help, Label, Title
 from cmk.rulesets.v1.form_specs import (
     DefaultValue,
     DictElement,
@@ -69,6 +69,7 @@ def _formspec():
                 required=False,
                 parameter_form=BooleanChoice(
                     title=Title("Disable TLS certificate verification"),
+                    label=Label("SSL certificate validation is disabled"),
                     help_text=Help(
                         "Enable this if PMG uses a self-signed certificate "
                         "(default for a fresh install)."

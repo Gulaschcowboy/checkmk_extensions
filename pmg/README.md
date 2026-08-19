@@ -49,8 +49,8 @@ cmk_addons_plugins/pmg/
 ## Install
 
 ```
-mkp add pmg-1.0.3.mkp
-mkp enable pmg 1.0.3
+mkp add pmg-1.0.4.mkp
+mkp enable pmg 1.0.4
 ```
 
 Then create a host for the PMG node and add a rule under
@@ -72,3 +72,17 @@ performs read-only GET calls.
 
 - Checkmk 2.5.0p10 (Enterprise/CRE cmk_addons layout)
 - Proxmox Mail Gateway 8.x, REST API on port 8006
+
+## Changelog
+
+- **1.0.4**
+  - The "Disable TLS certificate verification" checkbox in the connection
+    ruleset now shows an inline label ("SSL certificate validation is
+    disabled") instead of appearing unlabeled.
+  - The junk/spam/virus ratio graph now draws the configured WARN/CRIT
+    thresholds as horizontal reference lines.
+  - Renamed the misleading "Junk ratio (spam + virus)" metric/graph/parameter
+    title to "Junk ratio (PMG-reported)" to avoid confusion with the sum of
+    the spam and virus ratios shown alongside it.
+- **1.0.3**
+  - Initial public release.

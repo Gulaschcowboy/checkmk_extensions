@@ -28,7 +28,7 @@ def _mail_form():
             "junk_percent_levels": DictElement(
                 required=False,
                 parameter_form=SimpleLevels(
-                    title=Title("Junk ratio (spam + virus) of incoming mail"),
+                    title=Title("Junk ratio (PMG-reported) of incoming mail"),
                     level_direction=LevelDirection.UPPER,
                     form_spec_template=Float(unit_symbol="%"),
                     prefill_fixed_levels=DefaultValue((50.0, 80.0)),
