@@ -41,19 +41,19 @@ metric_mail_junk_percent = Metric(
     name="mail_junk_percent",
     title=Title("Junk ratio (PMG-reported)"),
     unit=UNIT_PERCENT,
-    color=Color.ORANGE,
+    color=Color.BLUE,
 )
 metric_mail_spam_percent = Metric(
     name="mail_spam_percent",
     title=Title("Spam ratio"),
     unit=UNIT_PERCENT,
-    color=Color.YELLOW,
+    color=Color.GREEN,
 )
 metric_mail_virus_percent = Metric(
     name="mail_virus_percent",
     title=Title("Virus ratio"),
     unit=UNIT_PERCENT,
-    color=Color.RED,
+    color=Color.PURPLE,
 )
 metric_mail_avptime = Metric(
     name="mail_avptime",

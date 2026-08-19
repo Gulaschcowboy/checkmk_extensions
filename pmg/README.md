@@ -49,8 +49,8 @@ cmk_addons_plugins/pmg/
 ## Install
 
 ```
-mkp add pmg-1.0.4.mkp
-mkp enable pmg 1.0.4
+mkp add pmg-1.0.5.mkp
+mkp enable pmg 1.0.5
 ```
 
 Then create a host for the PMG node and add a rule under
@@ -75,6 +75,10 @@ performs read-only GET calls.
 
 ## Changelog
 
+- **1.0.5**
+  - Adjusted the junk/spam/virus ratio metric colors for better distinction:
+    junk ratio now blue, spam ratio green, virus ratio purple (previously
+    orange/yellow/red, the latter clashing with the CRIT threshold color).
 - **1.0.4**
   - The "Disable TLS certificate verification" checkbox in the connection
     ruleset now shows an inline label ("SSL certificate validation is
