@@ -158,6 +158,14 @@ STOP_TOKENS = {
     # available for it from already-collected agent sections, so it is
     # dropped outright instead).
     "iptables",
+    # "mtr" (network diagnostics tool, combines traceroute+ping) is a
+    # genuine, real package match too, but the check_mk 'mtr' plug-in
+    # requires a deliberate manual setup (a per-host list of static target
+    # hosts/IPs to continuously trace, configured in a dedicated agent
+    # bakery rule) that is far too specific a use case to flag as a missing
+    # default for every host that merely has the mtr package installed
+    # (e.g. as a troubleshooting tool, unrelated to being monitored via it).
+    "mtr",
 }
 
 # Substring / word signatures for matching verbose names (especially Windows
