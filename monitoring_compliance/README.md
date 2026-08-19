@@ -64,6 +64,14 @@ mkp enable monitoring_compliance 1.5.9
 
 ## Changelog
 
+- **1.5.27** — Fixed two `BooleanChoice` fields in the "Checkmk Monitoring
+  Compliance" special-agent rule and the check-parameter rule
+  (`no_plugin_check`, `no_labels`, `no_inventory`, `report_db_stats`,
+  `report_known_catalog` and `informational_only`,
+  `disable_capability_db`) showing an unlabeled second checkbox stacked
+  under the outer "enable this option" checkbox. Added an explicit
+  `label=` to each affected `BooleanChoice`, so the inner checkbox now
+  carries its own descriptive text instead of appearing blank.
 - **1.5.26** — Fixed a false negative where PowerDNS (Authoritative
   Server + Recursor) was not detected as a capability even though it was
   installed and actively monitored. The package/process/systemd-unit
