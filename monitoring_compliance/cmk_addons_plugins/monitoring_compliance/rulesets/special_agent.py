@@ -2,7 +2,7 @@
 # Rule to enable the server-side compliance data source per host.
 # Setup > Agents > Other integrations.
 
-from cmk.rulesets.v1 import Help, Title
+from cmk.rulesets.v1 import Help, Label, Title
 from cmk.rulesets.v1.form_specs import (
     BooleanChoice,
     DefaultValue,
@@ -35,21 +35,25 @@ def _form():
             "no_plugin_check": DictElement(
                 parameter_form=BooleanChoice(
                     title=Title("Do not check plug-in availability ('cmk -L')"),
+                    label=Label("Skip the plug-in availability check"),
                 ),
             ),
             "no_labels": DictElement(
                 parameter_form=BooleanChoice(
                     title=Title("Do not collect host labels"),
+                    label=Label("Skip collecting host labels"),
                 ),
             ),
             "no_inventory": DictElement(
                 parameter_form=BooleanChoice(
                     title=Title("Do not read HW/SW inventory packages"),
+                    label=Label("Skip reading HW/SW inventory packages"),
                 ),
             ),
             "report_db_stats": DictElement(
                 parameter_form=BooleanChoice(
                     title=Title("Report capability database statistics"),
+                    label=Label("Emit the capability database statistics section"),
                     help_text=Help(
                         "Emit a statistics section for the persistent "
                         "capability database, which creates the additional "
@@ -70,6 +74,7 @@ def _form():
             "report_known_catalog": DictElement(
                 parameter_form=BooleanChoice(
                     title=Title("Report known catalog"),
+                    label=Label("Emit the known-catalog section"),
                     help_text=Help(
                         "Emit the read-only known-catalog section, which "
                         "creates the informational 'Checkmk Known Catalog' "
