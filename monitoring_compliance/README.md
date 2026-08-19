@@ -64,6 +64,73 @@ mkp enable monitoring_compliance 1.5.9
 
 ## Changelog
 
+- **1.5.26** — Fixed a false negative where PowerDNS (Authoritative
+  Server + Recursor) was not detected as a capability even though it was
+  installed and actively monitored. The package/process/systemd-unit
+  names (`pdns`, `pdns-recursor`, `pdns_server`) were never mapped to the
+  Checkmk plug-in prefix `powerdns_*` because no alias existed. Added the
+  missing alias plus title/hint entries.
+- **1.5.25** — Fixed a false positive where the Apache client-tools
+  package (`apache2-utils`, and the equivalent `apache2-bin`/
+  `httpd-tools` on other distros) was treated as evidence of an actual
+  Apache HTTP server. These packages ship `htpasswd`/`ab`/`htdigest`
+  only and are frequently pulled in as a dependency of unrelated
+  packages. Now excluded via the client-only evidence exclusion.
+- **1.5.24** — Fixed a false positive where the NUT (Network UPS Tools)
+  client package (`nut-client`) and its `nut-monitor.service` unit
+  (`upsmon` running in client mode) were treated as evidence of a local
+  NUT server (`upsd`). The evidence-exclusion mechanism (previously
+  `PACKAGE_EVIDENCE_EXCLUDE`, package-only) was generalized to
+  `EVIDENCE_EXCLUDE` and now also applies to running capability
+  evidence (systemd units/processes), not just installed packages.
+- **1.5.23** — Fixed a false positive where the `libdbd-mysql-perl`
+  Perl DBI driver (a pure client library) was treated as evidence of an
+  installed MySQL/MariaDB server. Added to the existing client-evidence
+  exclusion for the `mysql` token.
+- **1.5.22** — Fixed a false positive where the MySQL/MariaDB client
+  libraries/tools (`mysql-common`, `mariadb-common`, `libmysqlclient*`,
+  `libmariadb*`) — commonly pulled in as a dependency by unrelated
+  packages — were treated as evidence of an installed MySQL/MariaDB
+  server. Introduced `PACKAGE_EVIDENCE_EXCLUDE` to exclude such
+  client-only package names from installation evidence for the `mysql`
+  token; genuine server packages or runtime evidence (systemd
+  unit/process `mysqld`/`mariadbd`) are still detected as before.
+- **1.5.21** — Fixed a false positive where mere presence of the
+  `dmraid` package (openSUSE) was treated as evidence of active
+  software RAID usage. Added a new usage-evidence source: the `md`
+  section (`/proc/mdstat`) must report at least one array before the
+  finding is raised, matching the existing LVM/ZFS/Corosync pattern.
+- **1.5.20** — Fixed a false positive where the `site` token — the
+  leading token of both the Checkmk-bundled `site_object_counts`
+  plug-in and countless unrelated `site-*` packages (e.g. a web
+  server's `site-config` vhost package) — caused a spurious "available
+  plug-in" finding from pure leading-token coincidence. Added to
+  `STOP_TOKENS`, same class as the existing `intel`/`watchdog` entries.
+- **1.5.19** — Dropped the `mtr` finding. The package match is genuine,
+  but the check_mk `mtr` plug-in requires deliberate manual setup (a
+  per-host list of static target hosts, configured via a dedicated
+  agent bakery rule), making mere package presence far too weak a
+  signal for a missing-default finding.
+- **1.5.18** — Dropped the `iptables` finding. iptables/netfilter
+  tooling ships as a standard part of virtually every Linux
+  distribution regardless of whether it is actually used for
+  firewalling, so mere package presence carries no real compliance
+  signal. Unlike the token-collision cases above, the plug-in match
+  itself is genuine — it is simply not a meaningful finding, and no
+  cheap usage evidence is available for it.
+- **1.5.17** — Corosync package presence alone is not evidence of
+  actual cluster usage (e.g. on Proxmox VE, it's a standard dependency
+  installed regardless of clustering). Now requires the
+  `corosync.service` systemd unit to be loaded and active before
+  raising a finding, matching the existing LVM/ZFS usage-evidence
+  pattern.
+- **1.5.16** — Fixed a false positive where the systemd hardware-
+  watchdog multiplexer unit (`watchdog-mux.service`, part of the base
+  `watchdog` package, unrelated to any monitored subsystem) shared its
+  leading token with the unrelated environmental-sensor plug-ins
+  `watchdog_sensors*` (Watchdog Inc. weather-station hardware), causing
+  a false "available plug-in(s)" finding from pure token-prefix
+  coincidence. Added `watchdog` to `STOP_TOKENS`, same class as `intel`.
 - **1.5.15** — Fixed a false positive where Ceph client-side tooling
   (`ceph-common`, `ceph-fuse`) was tokenized to the same canonical token as
   the actual Ceph server/daemon packages, so hosts with only client-side
