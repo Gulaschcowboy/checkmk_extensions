@@ -166,6 +166,14 @@ STOP_TOKENS = {
     # default for every host that merely has the mtr package installed
     # (e.g. as a troubleshooting tool, unrelated to being monitored via it).
     "mtr",
+    # "site" is the leading token of the Checkmk-bundled "site_object_counts"
+    # plug-in (mk_site_object_counts - counts objects of a *Checkmk site*
+    # itself, rolled out via its own dedicated agent bakery rule) but also
+    # the leading token of countless unrelated "site-*" packages (e.g. a
+    # web server's "site-config" package for a vhost). Pure leading-token
+    # coincidence, not a covering plug-in relationship - same class of
+    # false positive as "intel"/"watchdog" above.
+    "site",
 }
 
 # Substring / word signatures for matching verbose names (especially Windows
