@@ -79,7 +79,8 @@ TOKENS_REQUIRE_USAGE_EVIDENCE: frozenset[str] = frozenset({"lvm", "zfs", "corosy
 # via ALIASES, e.g. "mariadbd"/"mysqld") is still required.
 PACKAGE_EVIDENCE_EXCLUDE: dict[str, "re.Pattern[str]"] = {
     "mysql": re.compile(
-        r"(?:^|[-_])(?:common|client|clients)(?:[-_]|$)|^lib(?:mysqlclient|mariadb)\d*",
+        r"(?:^|[-_])(?:common|client|clients)(?:[-_]|$)|^lib(?:mysqlclient|mariadb)\d*"
+        r"|^libdbd-mysql-perl$",
         re.IGNORECASE,
     ),
 }
