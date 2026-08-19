@@ -35,7 +35,7 @@
            'lib': ['python3/cmk/base/cee/plugins/bakery/monitoring_compliance.py']},
  'name': 'monitoring_compliance',
  'title': 'Checkmk Monitoring Compliance',
- 'version': '1.5.21',
+ 'version': '1.5.22',
  'version.min_required': '2.3.0p1',
  'version.packaged': 'manual-build',
  'version.usable_until': None}

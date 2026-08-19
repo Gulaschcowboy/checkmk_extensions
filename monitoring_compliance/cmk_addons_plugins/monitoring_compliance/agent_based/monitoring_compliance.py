@@ -69,6 +69,21 @@ INSTALLED_TYPES = {T_PACKAGE, T_INV_PACKAGE}
 # the host would conclude ("installed but never touched").
 TOKENS_REQUIRE_USAGE_EVIDENCE: frozenset[str] = frozenset({"lvm", "zfs", "corosync", "dmraid"})
 
+# Some packages/inventory hits are client-only libraries/tools that ship as a
+# dependency of countless other packages and say nothing about whether the
+# corresponding *server* is installed (e.g. "mysql-common"/"mariadb-common"
+# pull in for any package that merely links against the client library).
+# Package/inv_package names matching these per-token patterns are therefore
+# not counted as installation evidence; a real server package (e.g.
+# "mariadb-server", "mysql-server") or running evidence (systemd unit/process
+# via ALIASES, e.g. "mariadbd"/"mysqld") is still required.
+PACKAGE_EVIDENCE_EXCLUDE: dict[str, "re.Pattern[str]"] = {
+    "mysql": re.compile(
+        r"(?:^|[-_])(?:common|client|clients)(?:[-_]|$)|^lib(?:mysqlclient|mariadb)\d*",
+        re.IGNORECASE,
+    ),
+}
+
 # ---------------------------------------------------------------------------
 # Seed knowledge: aliases (raw token -> canonical token), nice titles, hints.
 # This is only used to improve naming/precision; correlation itself works
@@ -846,6 +861,12 @@ def check_monitoring_compliance(
             continue
         if not monitorable:
             continue
+        # Client-only libraries/tools (e.g. "mysql-common") must not count as
+        # evidence that the corresponding server is installed.
+        if ctype in INSTALLED_TYPES:
+            excl = PACKAGE_EVIDENCE_EXCLUDE.get(token)
+            if excl and excl.search(name):
+                continue
         # Kernel/library features (LVM, ZFS, ...): package/inventory presence
         # alone proves nothing was ever actually used. Require corroborating
         # evidence from the df section; drop the capability entirely if that
