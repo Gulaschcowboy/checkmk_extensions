@@ -148,6 +148,16 @@ STOP_TOKENS = {
     # covering plug-in relationship - same class of false positive as
     # "intel" above.
     "watchdog",
+    # "iptables" is not a token-collision case like the ones above - the
+    # match against the "iptables" check plug-in is genuine. It is excluded
+    # anyway because the iptables package/kernel netfilter tooling ships as
+    # a standard part of virtually every Linux distribution regardless of
+    # whether it is actually used for firewalling on a given host, so mere
+    # presence carries no real compliance signal (same rationale class as
+    # TOKENS_REQUIRE_USAGE_EVIDENCE, but there is no cheap usage evidence
+    # available for it from already-collected agent sections, so it is
+    # dropped outright instead).
+    "iptables",
 }
 
 # Substring / word signatures for matching verbose names (especially Windows
