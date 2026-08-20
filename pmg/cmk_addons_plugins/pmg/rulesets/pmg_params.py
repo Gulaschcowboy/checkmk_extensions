@@ -7,6 +7,7 @@ from cmk.rulesets.v1.form_specs import (
     Dictionary,
     Float,
     LevelDirection,
+    LevelsType,
     ServiceState,
     SimpleLevels,
     TimeMagnitude,
@@ -32,6 +33,7 @@ def _mail_form():
                     level_direction=LevelDirection.UPPER,
                     form_spec_template=Float(unit_symbol="%"),
                     prefill_fixed_levels=DefaultValue((50.0, 80.0)),
+                    prefill_levels_type=DefaultValue(LevelsType.NONE),
                 ),
             ),
             "spam_percent_levels": DictElement(
@@ -41,6 +43,7 @@ def _mail_form():
                     level_direction=LevelDirection.UPPER,
                     form_spec_template=Float(unit_symbol="%"),
                     prefill_fixed_levels=DefaultValue((30.0, 60.0)),
+                    prefill_levels_type=DefaultValue(LevelsType.NONE),
                 ),
             ),
             "virus_percent_levels": DictElement(
@@ -50,6 +53,7 @@ def _mail_form():
                     level_direction=LevelDirection.UPPER,
                     form_spec_template=Float(unit_symbol="%"),
                     prefill_fixed_levels=DefaultValue((5.0, 20.0)),
+                    prefill_levels_type=DefaultValue(LevelsType.NONE),
                 ),
             ),
         },

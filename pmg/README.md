@@ -59,8 +59,8 @@ cmk_addons_plugins/pmg/
 ## Install
 
 ```
-mkp add pmg-1.0.7.mkp
-mkp enable pmg 1.0.7
+mkp add pmg-1.1.0.mkp
+mkp enable pmg 1.1.0
 ```
 
 Then create a host for the PMG node and add a rule under
@@ -85,6 +85,12 @@ performs read-only GET calls.
 
 ## Changelog
 
+- **1.1.0**
+  - Defaults for "PMG mail statistics" (Junk/Spam/Virus ratio) changed
+    from fixed WARN/CRIT thresholds to `no_levels` (no default
+    thresholds) -- these ratios vary too much between environments to
+    ship a sane global default; set thresholds per-host/per-rule as
+    needed.
 - **1.0.7**
   - Added three new quarantine queue services (`pmg_quarantine_queue_spam`,
     `pmg_quarantine_queue_virus`, `pmg_quarantine_queue_attachment`) that
