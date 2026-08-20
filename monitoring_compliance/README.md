@@ -4,6 +4,8 @@ Detects installed and/or running services on a host that are not yet monitored,
 even though a suitable Checkmk plug-in is available on the server. The result
 is a **"Checkmk Monitoring Compliance"** service with WARN/CRIT logic and a
 compliance metric (`compliance_percent`).
+<img width="1856" height="616" alt="image" src="https://github.com/user-attachments/assets/bbf15235-7a02-4bea-8a5d-c97b05307249" />
+
 
 ## How it works
 
@@ -28,6 +30,7 @@ The check does not bind the cached `lnx_packages` / `win_reg_uninstall` agent
 sections, so the service is driven by live data and recomputes on the normal
 check interval (and can be rescheduled). Installed-package data still only
 changes as fast as the HW/SW inventory is refreshed.
+
 
 ## Services
 
