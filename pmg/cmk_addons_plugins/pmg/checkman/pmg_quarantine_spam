@@ -1,4 +1,4 @@
-title: Proxmox Mail Gateway: Spam Quarantine
+title: Proxmox Mail Gateway: Spam Quarantine Statistics
 agents: pmg
 catalog: app/pmg
 license: GPLv2
@@ -9,6 +9,10 @@ description:
  of quarantined mail. Useful to catch unusually large quarantine
  growth (spam wave, or users no longer reviewing/releasing quarantined
  mail) and disk-space pressure from quarantine storage.
+
+ Note: {/quarantine/spamstatus} reports the full quarantine database,
+ not a recent time window -- for the current backlog that still needs
+ to be released or deleted, see {PMG Spam Quarantine Queue} instead.
 
  Optional WARN/CRIT thresholds apply to the mail count.
 

@@ -14,8 +14,11 @@ Not meant as an replacement for the Linux agent, but as an addition.
 | `pmg_mail`              | Mail throughput and spam/virus junk ratio                       |
 | `pmg_rejects`           | SMTP early rejects (RBL / PREGREET) over the reporting window   |
 | `pmg_queue`             | Postfix queue depth (one service per queue: active, deferred, hold, incoming) |
-| `pmg_quarantine_spam`   | Spam quarantine size (mail count)                                |
-| `pmg_quarantine_virus`  | Virus quarantine size (mail count)                               |
+| `pmg_quarantine_spam`   | Spam quarantine statistics (full quarantine database)           |
+| `pmg_quarantine_virus`  | Virus quarantine statistics (full quarantine database)          |
+| `pmg_quarantine_queue_spam`       | Spam quarantine queue: current backlog needing release/delete |
+| `pmg_quarantine_queue_virus`      | Virus quarantine queue: current backlog needing release/delete |
+| `pmg_quarantine_queue_attachment` | Attachment quarantine queue: current backlog needing release/delete |
 | `pmg_clamav`            | ClamAV virus signature database freshness                        |
 | `pmg_spamassassin`      | SpamAssassin rule channel update status (one service per channel)|
 | `pmg_node_status`       | Node uptime, cluster database sync state, kernel version         |
@@ -25,6 +28,13 @@ Not meant as an replacement for the Linux agent, but as an addition.
 
 All warn/crit thresholds are configurable via WATO rules under
 *Setup → Service monitoring rules* (one ruleset per check listed above).
+
+The quarantine queue services (spam/virus/attachment) look back over a
+configurable time window (default 30 days), set via "Fetch quarantine queue
+mails from the last ... days" in the special agent rule itself -- not in the
+check parameter rulesets. The quarantine statistics services
+(`pmg_quarantine_spam`/`pmg_quarantine_virus`) instead always report the
+full quarantine database with no time filter.
 
 ## Layout
 
@@ -49,8 +59,8 @@ cmk_addons_plugins/pmg/
 ## Install
 
 ```
-mkp add pmg-1.0.5.mkp
-mkp enable pmg 1.0.5
+mkp add pmg-1.0.7.mkp
+mkp enable pmg 1.0.7
 ```
 
 Then create a host for the PMG node and add a rule under
@@ -75,6 +85,24 @@ performs read-only GET calls.
 
 ## Changelog
 
+- **1.0.7**
+  - Added three new quarantine queue services (`pmg_quarantine_queue_spam`,
+    `pmg_quarantine_queue_virus`, `pmg_quarantine_queue_attachment`) that
+    report the current backlog of quarantined mail still needing release or
+    deletion, fetched via `/quarantine/{spam,virus,attachment}` with an
+    explicit starttime/endtime window. The window length is configurable
+    in the special agent rule ("Fetch quarantine queue mails from the last
+    ... days", default 30). Default thresholds: WARN above 1 mail, CRIT
+    above 10 mails.
+  - Renamed the existing `pmg_quarantine_spam`/`pmg_quarantine_virus`
+    services from "PMG Spam/Virus Quarantine" to "PMG Spam/Virus Quarantine
+    Statistics" to distinguish them from the new queue services -- these
+    two continue to report the full quarantine database via
+    `/quarantine/{spam,virus}status`, not a recent time window.
+- **1.0.6**
+  - Added a second, independent WARN/CRIT threshold for the spam ratio
+    (`spam_percent_levels`) in "PMG mail statistics", analogous to the
+    existing junk ratio threshold. Default 30%/60%.
 - **1.0.5**
   - Adjusted the junk/spam/virus ratio metric colors for better distinction:
     junk ratio now blue, spam ratio green, virus ratio purple (previously

@@ -86,7 +86,7 @@ def check_pmg_quarantine_spam(params, section):
 check_plugin_pmg_quarantine_spam = CheckPlugin(
     name="pmg_quarantine_spam",
     sections=["pmg_quarantine"],
-    service_name="PMG Spam Quarantine",
+    service_name="PMG Spam Quarantine Statistics",
     discovery_function=discover_pmg_quarantine_spam,
     check_function=check_pmg_quarantine_spam,
     check_default_parameters={"count_levels": ("no_levels", None)},
@@ -107,9 +107,105 @@ def check_pmg_quarantine_virus(params, section):
 check_plugin_pmg_quarantine_virus = CheckPlugin(
     name="pmg_quarantine_virus",
     sections=["pmg_quarantine"],
-    service_name="PMG Virus Quarantine",
+    service_name="PMG Virus Quarantine Statistics",
     discovery_function=discover_pmg_quarantine_virus,
     check_function=check_pmg_quarantine_virus,
     check_default_parameters={"count_levels": ("fixed", (1.0, 1.0))},
     check_ruleset_name="pmg_quarantine_virus",
+)
+
+
+# --- Quarantine queue (current backlog: spam / virus / attachment) ----------
+def parse_pmg_quarantine_queue(string_table):
+    if not string_table:
+        return {}
+    try:
+        return json.loads(string_table[0][0])
+    except (ValueError, IndexError):
+        return {}
+
+
+agent_section_pmg_quarantine_queue = AgentSection(
+    name="pmg_quarantine_queue",
+    parse_function=parse_pmg_quarantine_queue,
+)
+
+
+def _discover_quarantine_queue(qtype):
+    def _discover(section):
+        entry = section.get(qtype)
+        if isinstance(entry, dict) and "_error" in entry:
+            return
+        if entry is not None:
+            yield Service()
+    return _discover
+
+
+def _check_quarantine_queue(qtype, params, section):
+    entry = section.get(qtype)
+    if isinstance(entry, dict) and "_error" in entry:
+        yield Result(state=State.UNKNOWN, summary="API error: %s" % entry["_error"])
+        return
+    if entry is None:
+        yield Result(state=State.UNKNOWN, summary="no data")
+        return
+
+    count = int(entry)
+    warn, crit = _levels(params.get("count_levels", ("fixed", (1.0, 10.0))))
+    state = State.OK
+    if crit is not None and count >= crit:
+        state = State.CRIT
+    elif warn is not None and count >= warn:
+        state = State.WARN
+
+    yield Result(state=state, summary="%d mails" % count)
+    yield Metric("pmg_quarantine_queue_count", count,
+                 levels=(warn, crit) if warn is not None else None)
+
+
+discover_pmg_quarantine_queue_spam = _discover_quarantine_queue("spam")
+discover_pmg_quarantine_queue_virus = _discover_quarantine_queue("virus")
+discover_pmg_quarantine_queue_attachment = _discover_quarantine_queue("attachment")
+
+
+def check_pmg_quarantine_queue_spam(params, section):
+    yield from _check_quarantine_queue("spam", params, section)
+
+
+def check_pmg_quarantine_queue_virus(params, section):
+    yield from _check_quarantine_queue("virus", params, section)
+
+
+def check_pmg_quarantine_queue_attachment(params, section):
+    yield from _check_quarantine_queue("attachment", params, section)
+
+
+check_plugin_pmg_quarantine_queue_spam = CheckPlugin(
+    name="pmg_quarantine_queue_spam",
+    sections=["pmg_quarantine_queue"],
+    service_name="PMG Spam Quarantine Queue",
+    discovery_function=discover_pmg_quarantine_queue_spam,
+    check_function=check_pmg_quarantine_queue_spam,
+    check_default_parameters={"count_levels": ("fixed", (1.0, 10.0))},
+    check_ruleset_name="pmg_quarantine_queue_spam",
+)
+
+check_plugin_pmg_quarantine_queue_virus = CheckPlugin(
+    name="pmg_quarantine_queue_virus",
+    sections=["pmg_quarantine_queue"],
+    service_name="PMG Virus Quarantine Queue",
+    discovery_function=discover_pmg_quarantine_queue_virus,
+    check_function=check_pmg_quarantine_queue_virus,
+    check_default_parameters={"count_levels": ("fixed", (1.0, 10.0))},
+    check_ruleset_name="pmg_quarantine_queue_virus",
+)
+
+check_plugin_pmg_quarantine_queue_attachment = CheckPlugin(
+    name="pmg_quarantine_queue_attachment",
+    sections=["pmg_quarantine_queue"],
+    service_name="PMG Attachment Quarantine Queue",
+    discovery_function=discover_pmg_quarantine_queue_attachment,
+    check_function=check_pmg_quarantine_queue_attachment,
+    check_default_parameters={"count_levels": ("fixed", (1.0, 10.0))},
+    check_ruleset_name="pmg_quarantine_queue_attachment",
 )

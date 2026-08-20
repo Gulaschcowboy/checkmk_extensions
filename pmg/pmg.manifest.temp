@@ -2,7 +2,8 @@
  'description': 'Special agent for Proxmox Mail Gateway (PMG) via its REST '
                 'API. Monitors mail throughput and spam/virus ratio, SMTP '
                 'early rejects (RBL/PREGREET), Postfix queue depth (per '
-                'queue), spam and virus quarantine size, ClamAV database '
+                'queue), spam/virus quarantine statistics, spam/virus/'
+                'attachment quarantine queue backlog, ClamAV database '
                 'freshness, SpamAssassin rule update status, node status/'
                 'uptime, subscription status, pending package updates and '
                 'certificate expiry. PMG has no API-token mechanism, so '
@@ -26,6 +27,9 @@
                                   'pmg/checkman/pmg_queue',
                                   'pmg/checkman/pmg_quarantine_spam',
                                   'pmg/checkman/pmg_quarantine_virus',
+                                  'pmg/checkman/pmg_quarantine_queue_spam',
+                                  'pmg/checkman/pmg_quarantine_queue_virus',
+                                  'pmg/checkman/pmg_quarantine_queue_attachment',
                                   'pmg/checkman/pmg_clamav',
                                   'pmg/checkman/pmg_spamassassin',
                                   'pmg/checkman/pmg_node_status',
@@ -34,7 +38,7 @@
                                   'pmg/checkman/pmg_certificates']},
  'name': 'pmg',
  'title': 'Proxmox Mail Gateway (REST API)',
- 'version': '1.0.4',
+ 'version': '1.0.7',
  'version.min_required': '2.3.0b1',
  'version.packaged': 'hermes',
  'version.usable_until': None}

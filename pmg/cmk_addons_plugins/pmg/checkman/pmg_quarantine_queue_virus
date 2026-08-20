@@ -1,0 +1,24 @@
+title: Proxmox Mail Gateway: Virus Quarantine Queue
+agents: pmg
+catalog: app/pmg
+license: GPLv2
+distribution: check_mk
+description:
+ Monitors the current backlog of virus-quarantined mail that still needs
+ to be released or deleted, via {/quarantine/virus} with an explicit
+ {starttime}/{endtime} window (the lookback in days is configurable in
+ the special agent rule, default 30 days).
+
+ Unlike {PMG Virus Quarantine Statistics} (which reports the full
+ quarantine database via {/quarantine/virusstatus}), this check
+ reflects mail that actually still sits in the queue within the
+ configured window.
+
+ Default WARN/CRIT thresholds: WARN above 1 mail, CRIT above 10 mails.
+
+item:
+ None, one service per host.
+
+discovery:
+ One service is created if the virus quarantine queue is available from
+ the API.

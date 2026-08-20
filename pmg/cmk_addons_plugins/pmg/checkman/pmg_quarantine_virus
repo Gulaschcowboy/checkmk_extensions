@@ -1,4 +1,4 @@
-title: Proxmox Mail Gateway: Virus Quarantine
+title: Proxmox Mail Gateway: Virus Quarantine Statistics
 agents: pmg
 catalog: app/pmg
 license: GPLv2
@@ -9,6 +9,10 @@ description:
  should rarely quarantine actual viruses, the default thresholds
  already WARN/CRIT at a low count (default: 1) so that any virus
  catch is noticed promptly.
+
+ Note: {/quarantine/virusstatus} reports the full quarantine database,
+ not a recent time window -- for the current backlog that still needs
+ to be released or deleted, see {PMG Virus Quarantine Queue} instead.
 
 item:
  None, one service per host.

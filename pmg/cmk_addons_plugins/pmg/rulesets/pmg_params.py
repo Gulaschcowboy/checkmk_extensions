@@ -34,6 +34,24 @@ def _mail_form():
                     prefill_fixed_levels=DefaultValue((50.0, 80.0)),
                 ),
             ),
+            "spam_percent_levels": DictElement(
+                required=False,
+                parameter_form=SimpleLevels(
+                    title=Title("Spam ratio of incoming mail"),
+                    level_direction=LevelDirection.UPPER,
+                    form_spec_template=Float(unit_symbol="%"),
+                    prefill_fixed_levels=DefaultValue((30.0, 60.0)),
+                ),
+            ),
+            "virus_percent_levels": DictElement(
+                required=False,
+                parameter_form=SimpleLevels(
+                    title=Title("Virus ratio of incoming mail"),
+                    level_direction=LevelDirection.UPPER,
+                    form_spec_template=Float(unit_symbol="%"),
+                    prefill_fixed_levels=DefaultValue((5.0, 20.0)),
+                ),
+            ),
         },
     )
 
@@ -150,6 +168,57 @@ rule_spec_pmg_quarantine_virus = CheckParameters(
     title=Title("PMG virus quarantine size"),
     topic=Topic.NETWORKING,
     parameter_form=_quarantine_virus_form,
+    condition=HostCondition(),
+)
+
+
+# --- Quarantine queue (current backlog needing release/delete) -------------
+def _quarantine_queue_form(kind):
+    def _form():
+        return Dictionary(
+            title=Title("PMG %s quarantine queue" % kind),
+            help_text=Help(
+                "Current number of %s mails in quarantine that still need "
+                "to be released or deleted, looking back over the window "
+                "configured in the special agent rule (\"Fetch quarantine "
+                "queue mails from the last ... days\")." % kind
+            ),
+            elements={
+                "count_levels": DictElement(
+                    required=False,
+                    parameter_form=SimpleLevels(
+                        title=Title("Number of %s mails in the queue" % kind),
+                        level_direction=LevelDirection.UPPER,
+                        form_spec_template=Float(),
+                        prefill_fixed_levels=DefaultValue((1.0, 10.0)),
+                    ),
+                ),
+            },
+        )
+    return _form
+
+
+rule_spec_pmg_quarantine_queue_spam = CheckParameters(
+    name="pmg_quarantine_queue_spam",
+    title=Title("PMG spam quarantine queue"),
+    topic=Topic.NETWORKING,
+    parameter_form=_quarantine_queue_form("spam"),
+    condition=HostCondition(),
+)
+
+rule_spec_pmg_quarantine_queue_virus = CheckParameters(
+    name="pmg_quarantine_queue_virus",
+    title=Title("PMG virus quarantine queue"),
+    topic=Topic.NETWORKING,
+    parameter_form=_quarantine_queue_form("virus"),
+    condition=HostCondition(),
+)
+
+rule_spec_pmg_quarantine_queue_attachment = CheckParameters(
+    name="pmg_quarantine_queue_attachment",
+    title=Title("PMG attachment quarantine queue"),
+    topic=Topic.NETWORKING,
+    parameter_form=_quarantine_queue_form("attachment"),
     condition=HostCondition(),
 )
 

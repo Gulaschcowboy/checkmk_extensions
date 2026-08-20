@@ -85,6 +85,21 @@ def _formspec():
                     custom_validate=(validators.NumberInRange(min_value=1, max_value=300),),
                 ),
             ),
+            "quarantine_lookback_days": DictElement(
+                required=False,
+                parameter_form=Integer(
+                    title=Title("Fetch quarantine queue mails from the last ... days"),
+                    help_text=Help(
+                        "Lookback window for the spam/virus/attachment "
+                        "quarantine queue services (current backlog still "
+                        "needing release/delete). Does not affect the "
+                        "\"...Quarantine Statistics\" services, which "
+                        "always report the full quarantine database."
+                    ),
+                    prefill=DefaultValue(30),
+                    custom_validate=(validators.NumberInRange(min_value=1, max_value=365),),
+                ),
+            ),
         },
     )
 

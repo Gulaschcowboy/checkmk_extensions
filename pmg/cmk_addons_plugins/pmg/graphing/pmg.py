@@ -127,6 +127,12 @@ metric_pmg_cert_remaining = Metric(
     unit=UNIT_SECONDS,
     color=Color.CYAN,
 )
+metric_pmg_quarantine_queue_count = Metric(
+    name="pmg_quarantine_queue_count",
+    title=Title("Quarantine queue backlog"),
+    unit=UNIT_COUNT,
+    color=Color.ORANGE,
+)
 
 graph_pmg_mail_counts = Graph(
     name="pmg_mail_counts",
@@ -137,14 +143,34 @@ graph_pmg_mail_counts = Graph(
 
 graph_pmg_junk_ratio = Graph(
     name="pmg_junk_ratio",
-    title=Title("PMG junk/spam/virus ratio"),
+    title=Title("PMG junk ratio"),
     minimal_range=MinimalRange(0, 100),
     simple_lines=[
-        "mail_spam_percent",
-        "mail_virus_percent",
         "mail_junk_percent",
         WarningOf("mail_junk_percent"),
         CriticalOf("mail_junk_percent"),
+    ],
+)
+
+graph_pmg_spam_ratio = Graph(
+    name="pmg_spam_ratio",
+    title=Title("PMG spam ratio"),
+    minimal_range=MinimalRange(0, 100),
+    simple_lines=[
+        "mail_spam_percent",
+        WarningOf("mail_spam_percent"),
+        CriticalOf("mail_spam_percent"),
+    ],
+)
+
+graph_pmg_virus_ratio = Graph(
+    name="pmg_virus_ratio",
+    title=Title("PMG virus ratio"),
+    minimal_range=MinimalRange(0, 100),
+    simple_lines=[
+        "mail_virus_percent",
+        WarningOf("mail_virus_percent"),
+        CriticalOf("mail_virus_percent"),
     ],
 )
 

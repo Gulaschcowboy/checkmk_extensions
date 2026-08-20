@@ -18,6 +18,7 @@ class PMGParams(BaseModel):
     port: int = 8006
     no_cert_check: bool = True
     timeout: int = 20
+    quarantine_lookback_days: int = 30
 
 
 def _commands(params: PMGParams, host_config: HostConfig
@@ -28,6 +29,7 @@ def _commands(params: PMGParams, host_config: HostConfig
         "--realm", params.realm,
         "--port", str(params.port),
         "--timeout", str(params.timeout),
+        "--quarantine-lookback-days", str(params.quarantine_lookback_days),
     ]
     if params.no_cert_check:
         args.append("--no-cert-check")

@@ -13,6 +13,9 @@ description:
  is checked against configurable WARN/CRIT thresholds -- a sudden jump
  usually indicates either a spam wave or a broken content filter.
 
+ The spam ratio and the virus ratio are each checked against their own
+ configurable WARN/CRIT thresholds, independent of the junk ratio.
+
 item:
  None, one service per host.
 

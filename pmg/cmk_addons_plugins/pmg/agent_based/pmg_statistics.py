@@ -91,8 +91,26 @@ def check_pmg_mail(params, section):
                  summary="Junk ratio (in): %.1f%% (spam %.1f%%, virus %.1f%%)"
                  % (junk_pct, spam_pct, virus_pct))
     yield Metric("mail_junk_percent", junk_pct, levels=(warn, crit))
-    yield Metric("mail_spam_percent", spam_pct)
-    yield Metric("mail_virus_percent", virus_pct)
+
+    spam_warn, spam_crit = _levels(params.get("spam_percent_levels", ("fixed", (30.0, 60.0))))
+    spam_state = State.OK
+    if spam_pct >= spam_crit:
+        spam_state = State.CRIT
+    elif spam_pct >= spam_warn:
+        spam_state = State.WARN
+    yield Result(state=spam_state,
+                 summary="Spam ratio (in): %.1f%%" % spam_pct)
+    yield Metric("mail_spam_percent", spam_pct, levels=(spam_warn, spam_crit))
+
+    virus_warn, virus_crit = _levels(params.get("virus_percent_levels", ("fixed", (5.0, 20.0))))
+    virus_state = State.OK
+    if virus_pct >= virus_crit:
+        virus_state = State.CRIT
+    elif virus_pct >= virus_warn:
+        virus_state = State.WARN
+    yield Result(state=virus_state,
+                 summary="Virus ratio (in): %.1f%%" % virus_pct)
+    yield Metric("mail_virus_percent", virus_pct, levels=(virus_warn, virus_crit))
 
     avptime = mail.get("avptime")
     if avptime is not None:
@@ -107,7 +125,11 @@ check_plugin_pmg_mail = CheckPlugin(
     service_name="PMG Mail Statistics",
     discovery_function=discover_pmg_mail,
     check_function=check_pmg_mail,
-    check_default_parameters={"junk_percent_levels": ("fixed", (50.0, 80.0))},
+    check_default_parameters={
+        "junk_percent_levels": ("fixed", (50.0, 80.0)),
+        "spam_percent_levels": ("fixed", (30.0, 60.0)),
+        "virus_percent_levels": ("fixed", (5.0, 20.0)),
+    },
     check_ruleset_name="pmg_mail",
 )
 
