@@ -67,7 +67,20 @@ INSTALLED_TYPES = {T_PACKAGE, T_INV_PACKAGE}
 # extra agent plug-in needed. If that evidence is missing, the capability is
 # dropped entirely (not just downgraded), matching what a human investigating
 # the host would conclude ("installed but never touched").
-TOKENS_REQUIRE_USAGE_EVIDENCE: frozenset[str] = frozenset({"lvm", "zfs", "corosync", "dmraid"})
+# "mssql" is included here too, but with a different rationale: unlike the
+# storage/cluster features above, a real SQL Server *engine* install is a
+# legitimate WARN ("present, not running") even while stopped - the problem
+# is that *installed-only* evidence for "mssql" keeps coming from packages
+# that are not the engine at all (SQL Server Compact, ODBC/OLE DB drivers,
+# SSMS, ...; see EVIDENCE_EXCLUDE) and new client-only package name variants
+# keep showing up faster than they can be excluded one by one. Requiring the
+# Windows "services" section to show an actual "MSSQL*"-prefixed service
+# (running or not) as corroboration - see _usage_evidence() below -
+# means only real Microsoft SQL Server engine installs (which always
+# register such a service, even when stopped) can ever trigger this
+# recommendation at all, independent of how creatively named some bundled
+# driver/tool package turns out to be.
+TOKENS_REQUIRE_USAGE_EVIDENCE: frozenset[str] = frozenset({"lvm", "zfs", "corosync", "dmraid", "mssql", "iis"})
 
 # Some packages/inventory hits are client-only libraries/tools that ship as a
 # dependency of countless other packages and say nothing about whether the
@@ -90,7 +103,12 @@ TOKENS_REQUIRE_USAGE_EVIDENCE: frozenset[str] = frozenset({"lvm", "zfs", "corosy
 EVIDENCE_EXCLUDE: dict[str, "re.Pattern[str]"] = {
     "mysql": re.compile(
         r"(?:^|[-_])(?:common|client|clients)(?:[-_]|$)|^lib(?:mysqlclient|mariadb)\d*"
-        r"|^libdbd-mysql-perl$",
+        r"|^libdbd-mysql-perl$"
+        # Driver/connector packages (ODBC, JDBC, .NET connector, Python
+        # connector, etc.) are client-side application connectivity
+        # libraries, not the database server, and ship on any host that
+        # merely talks to a MySQL/MariaDB server elsewhere.
+        r"|connector|odbc|jdbc",
         re.IGNORECASE,
     ),
     "nut": re.compile(
@@ -99,6 +117,46 @@ EVIDENCE_EXCLUDE: dict[str, "re.Pattern[str]"] = {
     ),
     "apache": re.compile(
         r"^apache2-utils$|^apache2-bin$|^httpd-tools$",
+        re.IGNORECASE,
+    ),
+    # "Azure" alone is too generic a vendor token to trust blindly (any
+    # locally installed developer/admin tool bearing the Azure name would
+    # otherwise "prove" an Azure AD sync or monitoring agent installation).
+    # Client-side tooling that a host may have installed regardless of any
+    # Azure AD/agent role (Azure Data Studio, Azure CLI, Azure PowerShell
+    # module, Azure Storage Explorer) is therefore excluded here; real
+    # agent/connector packages (e.g. "Azure AD Connect", "Azure Connected
+    # Machine Agent", "Azure Monitor Agent") are still accepted as evidence.
+    "azure": re.compile(
+        r"data studio|storage explorer|\bcli\b|powershell",
+        re.IGNORECASE,
+    ),
+    # "SQL Server" client-side driver/tooling packages (ODBC/OLE DB
+    # providers, SSMS, SqlClient/ADO.NET libraries), "SQL Server Compact"
+    # (SQLCE), demo databases, the SQL Server Browser service package, etc.
+    # need no name-pattern exclude here at all: see the generic
+    # INSTALLED_TYPES filter below (applied to every
+    # TOKENS_REQUIRE_USAGE_EVIDENCE token, not just "mssql") - since none of
+    # these are ever the actual running-service evidence, they are dropped
+    # from "sources" generically by type rather than enumerated by name,
+    # which would otherwise need constant upkeep as new client-package
+    # name variants keep showing up.
+    # The available plug-ins here (citrix_controller, citrix_controller_
+    # licensing, citrix_controller_registered) all monitor a Citrix
+    # Delivery Controller server role. A huge number of "Citrix ..."
+    # packages, however, are shipped on VDAs (Virtual Delivery Agent =
+    # the managed *client* desktops/servers) or are end-user Workspace/
+    # Receiver client installs - they prove a Citrix-managed endpoint,
+    # never a Delivery Controller. Exclude that VDA/client-side tooling
+    # so it stops falsely "proving" a Controller install; a real
+    # Controller/Studio/core package is still accepted as evidence.
+    "citrix": re.compile(
+        r"vda\b|virtual delivery agent|receiver|workspace app|ica client"
+        r"|hdx|browser content redirection|diagnostics facility"
+        r"|group policy client-side extension|profile management|profilverwaltung"
+        r"|director vda plugin|print(?:er)? driver|universal print|druckclient|druckertreiber"
+        r"|mcs\b|machine creation services|telemetry service|casting|desktop lock"
+        r"|app protection|user profile",
         re.IGNORECASE,
     ),
 }
@@ -142,6 +200,7 @@ TITLES: dict[str, str] = {
     "oracle": "Oracle Database", "mssql": "Microsoft SQL Server",
     "iis": "Microsoft IIS", "msexch": "Microsoft Exchange",
     "powerdns": "PowerDNS",
+    "windhcp": "Windows DHCP Server",
 }
 
 HINTS: dict[str, str] = {
@@ -163,7 +222,9 @@ HINTS: dict[str, str] = {
     "iis": "Deploy the agent plug-in for IIS application pools.",
     "msexch": "Deploy the Exchange counter plug-ins, then run discovery.",
     "powerdns": "Deploy the 'powerdns' agent plug-in, then run discovery.",
+    "windhcp": "Deploy the 'win_dhcp_pools' agent plug-in, then run discovery.",
 }
+
 
 # Generic Checkmk plug-in tokens that should never be treated as an
 # "application" (avoids noise from base OS checks).
@@ -214,6 +275,15 @@ STOP_TOKENS = {
     # coincidence, not a covering plug-in relationship - same class of
     # false positive as "intel"/"watchdog" above.
     "site",
+    # "security" is the leading token of the environmental-sensor check
+    # plug-ins "security_master"/"security_master_humidity"/
+    # "security_master_temp" (Security Master brand hardware sensors), but
+    # is also the leading word of countless unrelated Windows update /
+    # inventory package display names (e.g. "Security Update for Microsoft
+    # Office 2010 (KB2553313) 32-Bit Edition"). Pure leading-token
+    # coincidence, not a covering plug-in relationship - same class of
+    # false positive as "intel"/"watchdog"/"site" above.
+    "security",
 }
 
 # Substring / word signatures for matching verbose names (especially Windows
@@ -255,10 +325,24 @@ _SIGNATURES_RAW: tuple[tuple[str, str], ...] = (
     (r"\bceph-fuse\b", "cephclient"),
     (r"oracle database", "oracle"),
     (r"\boracle\b", "oracle"),
+    # Windows "DHCP Server" role service (service name "DHCPServer",
+    # display name "DHCP Server") - distinct from the Linux
+    # isc-dhcp-server signature above, which maps to the unrelated "isc"
+    # token/plug-in.
+    (r"\bdhcp server\b", "windhcp"),
+    (r"\bdhcpserver\b", "windhcp"),
 )
 SIGNATURES: tuple[tuple[Any, str], ...] = tuple(
     (re.compile(pat, re.IGNORECASE), tok) for pat, tok in _SIGNATURES_RAW
 )
+
+# Checkmk plug-in name -> canonical token, for plug-ins whose name's leading
+# alnum run (as extracted by _plugin_token()'s generic tokenizer) is too
+# generic/ambiguous to use directly, e.g. "win_dhcp_pools" would otherwise
+# tokenize to the bare "win" (colliding with any other "win_*" plug-in).
+PLUGIN_TOKEN_OVERRIDES: dict[str, str] = {
+    "win_dhcp_pools": "windhcp",
+}
 
 # systemd units that are part of a package's standard boot-time housekeeping
 # and settle into "loaded active" on virtually every install of that package,
@@ -379,6 +463,43 @@ def _running_from_ps(section_ps: Any) -> set[str]:
     return names
 
 
+def _running_from_services(section_services: Any) -> set[str]:
+    """Running-service evidence from Checkmk's built-in Windows "services"
+    section (WinService(name, state, start_type, description) tuples,
+    already parsed by cmk's own agent_section_services parser).
+
+    Only entries whose current state is "running" count as real
+    running-evidence (mirrors _systemd_units()'s ACTIVE=active check) -
+    a service merely being installed/stopped must not count. Both the
+    short service name (e.g. "MSSQL$ELOECHT") and the human-readable
+    description (e.g. "SQL Server (ELOECHT)") are added so tokenisation
+    can match either form against a plug-in name.
+    """
+    names: set[str] = set()
+    if not section_services:
+        return names
+    try:
+        iterator = iter(section_services)
+    except TypeError:
+        return names
+    for entry in iterator:
+        try:
+            name = getattr(entry, "name", None)
+            state = getattr(entry, "state", None)
+            description = getattr(entry, "description", None)
+            if name is None and isinstance(entry, (list, tuple)) and len(entry) >= 2:
+                name, state = entry[0], entry[1]
+                description = entry[3] if len(entry) >= 4 else None
+            if not name or state != "running":
+                continue
+            names.add(str(name))
+            if description:
+                names.add(str(description))
+        except Exception:  # noqa: BLE001
+            continue
+    return names
+
+
 def _names_from_section(section: Any, keys: Sequence[str]) -> set[str]:
     names: set[str] = set()
     if not section:
@@ -487,11 +608,12 @@ def _systemd_units(section: Any) -> set[str]:
 # Capability collection
 # ---------------------------------------------------------------------------
 
-def _usage_evidence_from_df(
+def _usage_evidence(
     section_df: Any,
     section_zfsget: Any = None,
     section_systemd_units: Any = None,
     section_md: Any = None,
+    section_services: Any = None,
 ) -> frozenset[str]:
     """Derive real-usage evidence for kernel/storage features from
     already-collected agent sections - no extra agent plug-in required.
@@ -518,6 +640,27 @@ def _usage_evidence_from_df(
               active software RAID - on openSUSE it ships pre-installed
               on virtually every install regardless of whether any disk
               set is actually configured as a RAID.
+    - "mssql": the built-in Windows "services" section (WinService entries)
+              contains a service whose name/description matches
+              MSSQL.*running (i.e. a "MSSQL$<instance>"/"MSSQLSERVER" service
+              that is actually running right now). This is deliberately
+              stricter than the other tokens above (which accept mere
+              presence of a feature): only a *running* SQL Server engine
+              service is accepted as corroboration, so package-only hits
+              (SQL Server Compact, ODBC/OLE DB drivers, SSMS, ...) can never
+              trigger the "Deploy mssql.vbs" recommendation, matching what a
+              human checking "is SQL Server actually running here?" would
+              look for first.
+    - "iis":  the built-in Windows "services" section contains the actual
+              web-serving engine service ("W3SVC" / "World Wide Web
+              Publishing Service") in a running state. Deliberately NOT
+              satisfied by other IIS-branded management/admin services such
+              as "IIS-Verwaltungsdienst" (WMSVC, the remote IIS Manager
+              service) - that service can be running/installed while the
+              web-serving engine itself is stopped or not installed at all,
+              which would otherwise wrongly suggest deploying the IIS
+              application-pool plug-in on a host that never actually serves
+              anything via IIS.
     """
     evidence: set[str] = set()
     if section_df:
@@ -566,6 +709,30 @@ def _usage_evidence_from_df(
         if has_rows:
             evidence.add("dmraid")
 
+    if section_services:
+        mssql_running = re.compile(r"mssql", re.IGNORECASE)
+        iis_running = re.compile(r"^w3svc$|world wide web publishing", re.IGNORECASE)
+        try:
+            iterator = iter(section_services)
+        except TypeError:
+            iterator = iter(())
+        for entry in iterator:
+            try:
+                svc_name = str(getattr(entry, "name", None)
+                               or (entry.get("name") if isinstance(entry, Mapping) else "") or "")
+                svc_desc = str(getattr(entry, "description", None)
+                               or (entry.get("description") if isinstance(entry, Mapping) else "") or "")
+                svc_state = str(getattr(entry, "state", None)
+                                or (entry.get("state") if isinstance(entry, Mapping) else "") or "")
+            except Exception:  # noqa: BLE001
+                continue
+            if svc_state.lower() != "running":
+                continue
+            if mssql_running.search(svc_name) or mssql_running.search(svc_desc):
+                evidence.add("mssql")
+            if iis_running.search(svc_name) or iis_running.search(svc_desc):
+                evidence.add("iis")
+
     return frozenset(evidence)
 
 
@@ -575,6 +742,7 @@ def _collect_capabilities(
     present_sections: Sequence[str],
     section_ps: Any,
     section_systemd_units: Any,
+    section_services: Any = None,
 ) -> set[tuple[str, str]]:
     caps: set[tuple[str, str]] = set()
 
@@ -594,6 +762,11 @@ def _collect_capabilities(
             caps.add((T_PACKAGE, p))
     for u in _systemd_units(section_systemd_units):
         caps.add((T_SYSTEMD, u))
+
+    # 2b) built-in Windows "services" section (running Windows services,
+    # no custom agent plug-in required - see _running_from_services())
+    for u in _running_from_services(section_services):
+        caps.add((T_SERVICE, u))
 
     # 3) processes from ps
     for p in _running_from_ps(section_ps):
@@ -655,7 +828,11 @@ def _resolve_token(raw: str, custom_rules: Sequence[Mapping[str, Any]]) -> str:
 
 
 def _plugin_token(name: str) -> str:
-    m = re.match(r"[a-z0-9]+", name.lower())
+    n = name.lower()
+    override = PLUGIN_TOKEN_OVERRIDES.get(n)
+    if override:
+        return override
+    m = re.match(r"[a-z0-9]+", n)
     return m.group(0) if m else ""
 
 
@@ -791,6 +968,7 @@ def discover_monitoring_compliance(
     section_monitoring_compliance_inventory,
     section_ps,
     section_systemd_units,
+    section_services,
     section_df,
     section_zfsget,
     section_md,
@@ -805,6 +983,7 @@ def check_monitoring_compliance(
     section_monitoring_compliance_inventory,
     section_ps,
     section_systemd_units,
+    section_services,
     section_df,
     section_zfsget,
     section_md,
@@ -832,6 +1011,7 @@ def check_monitoring_compliance(
     for nm, sec in (
         ("ps", section_ps),
         ("systemd_units", section_systemd_units),
+        ("services", section_services),
         ("monitoring_compliance_inventory", section_monitoring_compliance_inventory),
     ):
         if sec:
@@ -839,15 +1019,15 @@ def check_monitoring_compliance(
 
     caps = _collect_capabilities(
         info, section_monitoring_compliance_inventory, present_sections,
-        section_ps, section_systemd_units,
+        section_ps, section_systemd_units, section_services,
     )
 
     ign_proc = _compile(params.get("ignored_processes", []) or [])
     ign_prog = _compile(params.get("ignored_programs", []) or [])
     custom_rules = list(params.get("custom_catalog", []) or [])
 
-    usage_evidence = _usage_evidence_from_df(
-        section_df, section_zfsget, section_systemd_units, section_md,
+    usage_evidence = _usage_evidence(
+        section_df, section_zfsget, section_systemd_units, section_md, section_services,
     )
 
     state_running = State(int(params.get("state_running_unmonitored", 2)))
@@ -897,6 +1077,19 @@ def check_monitoring_compliance(
         # evidence from the df section; drop the capability entirely if that
         # evidence is missing, regardless of which source found it.
         if token in TOKENS_REQUIRE_USAGE_EVIDENCE and token not in usage_evidence:
+            continue
+        # For the same tokens, an installed *package* (T_PACKAGE/
+        # T_INV_PACKAGE) can never itself be the required usage evidence -
+        # only a running-type source (process/systemd unit/Windows
+        # service) can. So once a token has cleared the check above (real
+        # usage evidence exists from a running-type source elsewhere),
+        # installed packages must still be excluded from "sources": showing
+        # e.g. an unrelated client driver/tool/demo-app package next to the
+        # real running-service evidence in "[detected via ...]" is
+        # confusing and provides no useful information about what to
+        # monitor. This is generic by capability type, not a per-token
+        # name-pattern list that would need constant upkeep.
+        if token in TOKENS_REQUIRE_USAGE_EVIDENCE and ctype in INSTALLED_TYPES:
             continue
 
         app = apps.setdefault(token, {
@@ -999,6 +1192,7 @@ check_plugin_monitoring_compliance = CheckPlugin(
         "monitoring_compliance_inventory",
         "ps",
         "systemd_units",
+        "services",
         "df",
         "zfsget",
         "md",

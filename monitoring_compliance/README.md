@@ -67,14 +67,38 @@ mkp enable monitoring_compliance 1.5.9
 
 ## Changelog
 
-- **1.5.27** — Fixed two `BooleanChoice` fields in the "Checkmk Monitoring
-  Compliance" special-agent rule and the check-parameter rule
-  (`no_plugin_check`, `no_labels`, `no_inventory`, `report_db_stats`,
-  `report_known_catalog` and `informational_only`,
-  `disable_capability_db`) showing an unlabeled second checkbox stacked
-  under the outer "enable this option" checkbox. Added an explicit
-  `label=` to each affected `BooleanChoice`, so the inner checkbox now
-  carries its own descriptive text instead of appearing blank.
+- **1.5.28** — Consolidated fixes for false positives/negatives in the
+  capability correlation logic (supersedes the 1.5.27 release; internal
+  test-cycle version bumps in between are not listed individually):
+  - MSSQL: an installed MSSQL-related package/tool (ODBC/OLE DB drivers,
+    SQL Server Compact, SQL Server Management Studio, the SQL Server
+    Browser service package, etc.) is no longer sufficient by itself to
+    recommend deploying the MSSQL monitoring plug-in. Only a currently
+    *running* SQL Server engine service (`MSSQL$<instance>` /
+    `MSSQLSERVER`, matched via the Windows "services" section) counts as
+    usage evidence.
+  - IIS: analogous fix — an installed IIS-related package (e.g. "IIS URL
+    Rewrite Module") or the IIS remote management service
+    ("IIS-Verwaltungsdienst" / WMSVC) running is no longer sufficient by
+    itself. Only the actual web-serving engine service ("W3SVC" / "World
+    Wide Web Publishing Service") in a running state counts as usage
+    evidence for recommending the IIS application-pool plug-in.
+  - Correctly suggest the "DHCP pools (Windows)" plug-in when the Windows
+    "Service DHCPServer" is found running.
+  - Generalized the usage-evidence exclusion for
+    `TOKENS_REQUIRE_USAGE_EVIDENCE` tokens (`lvm`, `zfs`, `corosync`,
+    `dmraid`, `mssql`, `iis`): installed packages (`package`/
+    `inv_package` capability types) can never by themselves satisfy the
+    usage-evidence requirement for these tokens, regardless of package
+    name — avoids fragile per-package name-pattern exclude lists.
+  - Fixed two `BooleanChoice` fields in the "Checkmk Monitoring
+    Compliance" special-agent rule and the check-parameter rule
+    (`no_plugin_check`, `no_labels`, `no_inventory`, `report_db_stats`,
+    `report_known_catalog` and `informational_only`,
+    `disable_capability_db`) showing an unlabeled second checkbox stacked
+    under the outer "enable this option" checkbox. Added an explicit
+    `label=` to each affected `BooleanChoice`, so the inner checkbox now
+    carries its own descriptive text instead of appearing blank.
 - **1.5.26** — Fixed a false negative where PowerDNS (Authoritative
   Server + Recursor) was not detected as a capability even though it was
   installed and actively monitored. The package/process/systemd-unit
