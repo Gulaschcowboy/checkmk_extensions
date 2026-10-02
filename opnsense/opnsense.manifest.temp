@@ -2,27 +2,34 @@
  'description': 'Special agent for OPNsense firewalls via the REST API. '
                 'Monitors firmware/update status, all services (one service '
                 'per OPNsense service, auto-discovered), system status, '
-                'uptime, load, memory, swap and filesystem usage. '
-                'Configurable HTTPS port (default 8443) and optional TLS '
-                'certificate check bypass for self-signed certificates.',
+                'uptime, load, memory, swap, filesystem usage and SMART disk '
+                'health when the os-smart plugin is installed: health '
+                'self-assessment, temperature and SSD life remaining. '
+                'Device-level SMART filtering is supported via a regular '
+                'expression. Configurable HTTPS port (default 8443) and '
+                'optional TLS certificate check bypass for self-signed '
+                'certificates.',
  'download_url': 'https://github.com/Gulaschcowboy/checkmk_extensions',
  'files': {'cmk_addons_plugins': ['opnsense/libexec/agent_opnsense',
                                   'opnsense/agent_based/opnsense_firmware.py',
                                   'opnsense/agent_based/opnsense_services.py',
                                   'opnsense/agent_based/opnsense_system.py',
                                   'opnsense/agent_based/opnsense_disk.py',
+                                  'opnsense/agent_based/opnsense_smart.py',
                                   'opnsense/rulesets/opnsense.py',
                                   'opnsense/rulesets/opnsense_params.py',
                                   'opnsense/server_side_calls/opnsense.py',
                                   'opnsense/graphing/opnsense.py',
+                                  'opnsense/graphing/opnsense_smart.py',
                                   'opnsense/checkman/opnsense_firmware',
                                   'opnsense/checkman/opnsense_services',
                                   'opnsense/checkman/opnsense_system',
                                   'opnsense/checkman/opnsense_memory',
-                                  'opnsense/checkman/opnsense_disk']},
+                                  'opnsense/checkman/opnsense_disk',
+                                  'opnsense/checkman/opnsense_smart']},
  'name': 'opnsense',
  'title': 'OPNsense firewall (REST API)',
- 'version': '1.0.3',
+ 'version': '1.1.0',
  'version.min_required': '2.3.0b1',
- 'version.packaged': 'hermes',
+ 'version.packaged': 'cmk-mkp-tool 3.0.0',
  'version.usable_until': None}
