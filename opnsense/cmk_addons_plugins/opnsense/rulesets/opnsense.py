@@ -20,11 +20,13 @@ def _formspec():
         title=Title("OPNsense via REST API"),
         help_text=Help(
             "Poll an OPNsense firewall over its REST API for firmware "
-            "update status, running services, and system diagnostics. "
+            "update status, running services, system diagnostics and, "
+            "when the os-smart plugin is installed, SMART disk health. "
             "Create an API key/secret under System > Access > Users > "
             "[user] > API keys. A read-only user with the privileges "
             "'System: Firmware', 'System: Status', 'Status: Services' and "
-            "'Lobby: Dashboard' is sufficient."
+            "'Lobby: Dashboard' is sufficient. SMART monitoring additionally "
+            "requires the 'Services: SMART' privilege on OPNsense."
         ),
         elements={
             "api_key": DictElement(
@@ -70,6 +72,19 @@ def _formspec():
                     title=Title("Request timeout (seconds)"),
                     prefill=DefaultValue(20),
                     custom_validate=(validators.NumberInRange(min_value=1, max_value=300),),
+                ),
+            ),
+            "smart_devices": DictElement(
+                required=False,
+                parameter_form=String(
+                    title=Title("SMART devices to monitor"),
+                    help_text=Help(
+                        "Regular expression matching the OPNsense disk device "
+                        "names for which SMART data should be collected. "
+                        "Examples: {ada0}, {^ada}, {ada0|nvme0}. Default is "
+                        "{.*} (all devices)."
+                    ),
+                    prefill=DefaultValue(".*"),
                 ),
             ),
         },

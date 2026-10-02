@@ -17,6 +17,7 @@ class OPNsenseParams(BaseModel):
     port: int = 8443
     no_cert_check: bool = True
     timeout: int = 20
+    smart_devices: str = ".*"
 
 
 def _commands(params: OPNsenseParams, host_config: HostConfig
@@ -26,6 +27,7 @@ def _commands(params: OPNsenseParams, host_config: HostConfig
         "--api-secret", params.api_secret.unsafe(),
         "--port", str(params.port),
         "--timeout", str(params.timeout),
+        "--smart-devices", params.smart_devices,
     ]
     if params.no_cert_check:
         args.append("--no-cert-check")

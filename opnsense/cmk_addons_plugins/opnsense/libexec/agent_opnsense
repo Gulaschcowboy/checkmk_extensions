@@ -7,16 +7,20 @@ username, API secret as password) and emits Checkmk agent sections:
     <<<opnsense_firmware:sep(0)>>>   JSON from core/firmware/status
     <<<opnsense_services:sep(0)>>>   JSON list from core/service/search
     <<<opnsense_system:sep(0)>>>     JSON: system/status + diagnostics gauges
+    <<<opnsense_smart:sep(0)>>>      JSON: SMART data per disk (os-smart)
 
 All endpoints are read-only (GET, or POST with empty body). A read-only user
 with "Status: Services" + "Lobby: Dashboard" + "System: Firmware" + "System:
-Status" privileges is sufficient.
+Status" privileges is sufficient. SMART data additionally requires the
+"Services: SMART" privilege and the os-smart plugin on OPNsense.
 """
 import argparse
 import json
+import re
 import sys
 import ssl
 import base64
+from urllib.parse import urlencode
 from urllib.request import Request, urlopen
 from urllib.error import HTTPError, URLError
 
@@ -29,6 +33,9 @@ def parse_args(argv):
     p.add_argument("--no-cert-check", action="store_true",
                    help="Disable TLS certificate verification (self-signed)")
     p.add_argument("--timeout", type=int, default=20, help="Per-request timeout (s)")
+    p.add_argument("--smart-devices", default=".*",
+                   help="Regex matching OPNsense disk device names to monitor "
+                        "(default: all devices)")
     p.add_argument("hostname", help="OPNsense host / address")
     return p.parse_args(argv)
 
@@ -52,11 +59,18 @@ class OPNsenseClient:
         token = base64.b64encode(("%s:%s" % (key, secret)).encode()).decode()
         self.auth = "Basic %s" % token
 
-    def call(self, path, method="GET"):
+    def call(self, path, method="GET", form=None):
         url = "%s/%s" % (self.base, path)
-        data = b"" if method == "POST" else None
+        if method == "POST" and form is not None:
+            data = urlencode(form).encode("utf-8")
+        elif method == "POST":
+            data = b""
+        else:
+            data = None
         req = Request(url, data=data, method=method)
         req.add_header("Authorization", self.auth)
+        if form is not None:
+            req.add_header("Content-Type", "application/x-www-form-urlencoded")
         with urlopen(req, context=self.ctx, timeout=self.timeout) as resp:
             return json.loads(resp.read().decode("utf-8"))
 
@@ -103,6 +117,39 @@ def main(argv=None):
         except (HTTPError, URLError, ValueError) as exc:
             system[key] = {"_error": str(exc)}
     emit("opnsense_system", system)
+
+    # --- SMART disk health (requires os-smart plugin) ---
+    smart = {"installed": False, "devices": []}
+    try:
+        roster = client.call("smart/service/list", method="POST")
+        try:
+            dev_pattern = re.compile(args.smart_devices)
+        except re.error as exc:
+            smart = {"installed": True, "devices": [],
+                     "_error": "Invalid smart-devices regex: %s" % exc}
+        else:
+            devices = []
+            for dev in roster.get("devices", []):
+                if not isinstance(dev, str) or not dev:
+                    continue
+                if not dev_pattern.search(dev):
+                    continue
+                try:
+                    info = client.call(
+                        "smart/service/info",
+                        method="POST",
+                        form={"device": dev, "type": "a", "json": "1"},
+                    )
+                    state = info.get("output") if isinstance(info, dict) else None
+                    devices.append({"device": dev, "state": state})
+                except (HTTPError, URLError, ValueError) as exc:
+                    devices.append({"device": dev, "state": None,
+                                    "_error": str(exc)})
+            smart = {"installed": True, "devices": devices}
+    except (HTTPError, URLError, ValueError) as exc:
+        # If the smart module is absent we get a 404; treat as not installed.
+        smart = {"installed": False, "devices": [], "_error": str(exc)}
+    emit("opnsense_smart", smart)
     return 0
 
 
