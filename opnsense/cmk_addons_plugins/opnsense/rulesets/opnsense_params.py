@@ -91,3 +91,45 @@ rule_spec_opnsense_disk = CheckParameters(
     parameter_form=_disk_form,
     condition=HostAndItemCondition(item_title=Title("Mountpoint")),
 )
+
+
+# --- SMART disk health ------------------------------------------------------
+def _smart_form():
+    return Dictionary(
+        elements={
+            "state_when_failed": DictElement(
+                required=False,
+                parameter_form=ServiceState(
+                    title=Title("State when SMART health is FAILED"),
+                    prefill=DefaultValue(ServiceState.CRIT),
+                ),
+            ),
+            "levels_temperature": DictElement(
+                required=False,
+                parameter_form=SimpleLevels(
+                    title=Title("Disk temperature levels"),
+                    level_direction=LevelDirection.UPPER,
+                    form_spec_template=Float(unit_symbol="°C"),
+                    prefill_fixed_levels=DefaultValue((45.0, 55.0)),
+                ),
+            ),
+            "levels_ssd_life": DictElement(
+                required=False,
+                parameter_form=SimpleLevels(
+                    title=Title("SSD life remaining levels"),
+                    level_direction=LevelDirection.LOWER,
+                    form_spec_template=Float(unit_symbol="%"),
+                    prefill_fixed_levels=DefaultValue((50.0, 25.0)),
+                ),
+            ),
+        }
+    )
+
+
+rule_spec_opnsense_smart = CheckParameters(
+    name="opnsense_smart",
+    title=Title("OPNsense disk health (SMART)"),
+    topic=Topic.NETWORKING,
+    parameter_form=_smart_form,
+    condition=HostAndItemCondition(item_title=Title("Disk device")),
+)

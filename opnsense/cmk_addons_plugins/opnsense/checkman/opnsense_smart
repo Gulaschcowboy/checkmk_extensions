@@ -1,0 +1,28 @@
+title: OPNsense: SMART Disk Health
+agents: opnsense
+catalog: os/storage
+license: GPLv2
+distribution: check_mk
+
+description:
+ This check monitors the SMART health of a single physical disk on an OPNsense
+ firewall. The data is collected via the special agent {agent_opnsense} from
+ the {/api/smart/service} REST API endpoints provided by the os-smart plugin,
+ creating one Checkmk service per disk.
+
+ The service reports the SMART overall-health self-assessment
+ ({PASSED}/{FAILED}), the disk temperature and, for NVMe disks or ATA SSDs
+ exposing a wear indicator, the SSD life remaining in percent. The service
+ turns {CRIT} when SMART reports {FAILED}. The temperature and SSD life
+ remaining thresholds can be adjusted through the rule "OPNsense disk health
+ (SMART)".
+
+ If the os-smart plugin is not installed on OPNsense, or if the API user does
+ not have the "Services: SMART" privilege, no SMART services are discovered.
+
+item:
+ The OPNsense disk device name, for example {nvme0} or {ada0}.
+
+discovery:
+ One service {OPNsense SMART DEVICE} is created for each disk returned by the
+ {smart/service/list} endpoint.
