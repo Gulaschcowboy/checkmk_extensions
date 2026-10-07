@@ -1,4 +1,4 @@
-# Citrix Virtual Apps and Desktops (CVAD REST API)
+# Citrix Virtual Apps and Desktops (via REST API)
 
 Checkmk special agent that monitors Citrix Virtual Apps and Desktops (CVAD,
 formerly XenApp/XenDesktop) entirely over HTTPS, using the on-premises CVAD
@@ -7,16 +7,16 @@ running locally on the Delivery Controller.
 
 ## Why
 
-Citrix ships a Windows agent plug-in, `citrix_farm.ps1`, that uses the local
+Checkmk ships a Windows agent plug-in, `citrix_farm.ps1`, that uses the local
 Citrix Broker PowerShell SDK (`Get-BrokerMachine`, `Get-BrokerSession`, ...)
-and must run directly on a Delivery Controller. This special agent is an
-alternative data source for environments where:
-
-- running custom scripts on the Delivery Controller is not desired or not
-  possible (e.g. managed/outsourced Citrix farms), or
-- you simply want to pull the data remotely from the Checkmk server, the
-  same way other special agents (Proxmox, pfSense, ...) already work in this
-  repository.
+and must run directly on a Delivery Controller. Setting it up is cumbersome
+and error-prone: the script has to be copied and adjusted (domain part),
+deployed via "Deploy custom files with agent", and then the Delivery
+Controller host needs the ruleset "Run plug-ins and local checks using
+non-system account" configured so the plug-in actually runs as the right
+user. This special agent is the easier alternative: it pulls the same data
+remotely from the Checkmk server over HTTPS, no plug-in deployment or
+non-system-account configuration needed on the Delivery Controller.
 
 ## What it does
 
@@ -33,20 +33,16 @@ and emits:
 For every hypervisor host hosting at least one machine, it additionally
 emits a `citrix_hostsystem` piggyback section (VM name + pool name).
 
-**These are the exact same sections Citrix's own `citrix_farm.ps1` produces.**
+**These are the exact same sections Checkmk's own `citrix_farm.ps1` produces.**
 This package therefore ships **no custom check plug-ins** — it reuses
 Checkmk's built-in `citrix_state`, `citrix_serverload`, `citrix_sessions`
-and `citrix_hostsystem` checks unchanged. There is no collision with
-Checkmk's built-in Citrix monitoring at the check-plug-in level, and no
-deployment conflict as long as you don't run both agents against the same
-machines at the same time.
+and `citrix_hostsystem` checks unchanged.
 
 ### Known limitation
 
 The CVAD REST API has no documented equivalent of `Get-BrokerController`.
 Delivery Controller health/licensing (the `citrix_controller` service) is
-therefore **not** covered by this special agent and still requires
-`citrix_farm.ps1` on the DDC if you need it.
+therefore **not** covered by this special agent.
 
 ## Requirements
 
@@ -59,9 +55,8 @@ therefore **not** covered by this special agent and still requires
 ## Configuration
 
 Setup -> Agents -> Other integrations -> "Citrix Virtual Apps and Desktops
-(CVAD REST API)". Assign the rule to a host representing the Delivery
+(via REST API)". Assign the rule to a host representing the Delivery
 Controller (or set the DDC address explicitly if it differs from the host's
 IP address). The password can be stored in the Checkmk password store.
 
-Verified against Checkmk 2.5 and 3.0 (`cmk_addons_plugins` with the
-`rulesets`/`server_side_calls` v1 API, unchanged between both versions).
+Verified against Checkmk 2.5 and 3.0.0-2026.10.07.

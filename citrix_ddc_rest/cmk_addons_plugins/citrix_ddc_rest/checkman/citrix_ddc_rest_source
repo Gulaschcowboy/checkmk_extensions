@@ -1,0 +1,24 @@
+title: Citrix DDC Statistics
+agents: citrix_ddc_rest
+catalog: app/citrix
+license: GPLv2
+distribution:
+description:
+ This service reports the health of the Citrix DDC REST special agent run
+ itself (authentication, site-ID lookup, Machines/Sessions polling against
+ the Delivery Controller). It is created on the host running the special
+ agent, not on the piggyback hosts (Delivery Controller is usually the
+ agent's own host in Setup; the piggyback hosts only carry the
+ citrix_state/citrix_serverload/citrix_sessions/citrix_hostsystem data).
+
+ Goes CRIT when the agent run failed (authentication, HTTP error, timeout)
+ with the underlying error message as the service output. Goes OK when the
+ run succeeded, reporting the number of machines and sessions retrieved and
+ the query duration.
+
+item:
+ None. One "Citrix DDC Statistics" service is created per configured host.
+
+discovery:
+ One "Citrix DDC Statistics" service is discovered on the host running the
+ special agent.

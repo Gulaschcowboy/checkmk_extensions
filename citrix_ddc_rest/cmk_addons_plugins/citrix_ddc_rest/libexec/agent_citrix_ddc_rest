@@ -5,7 +5,7 @@
 Polls a Citrix Delivery Controller (DDC) over the CVAD REST API
 (``/cvad/manage/...``, on-premises, requires CVAD >= 2212 with the
 Orchestration Service active) and emits classic Checkmk piggyback sections
-that are BYTE-FOR-BYTE compatible with the sections produced by Citrix's own
+that are BYTE-FOR-BYTE compatible with the sections produced by Checkmk's own
 Windows agent plugin ``citrix_farm.ps1`` for the per-machine/per-hypervisor
 data:
 
@@ -19,11 +19,14 @@ data:
 
 Because these are the exact sections Checkmk's built-in ``citrix_state``,
 ``citrix_serverload``, ``citrix_sessions`` and ``citrix_hostsystem`` check
-plugins already parse, this special agent does NOT ship any custom check
-plugins of its own -- it is purely an alternative, PowerShell-free upstream
-data source for the official Checkmk Citrix checks. There is therefore no
-collision at the check-plugin level with Checkmk's built-in Citrix
-monitoring.
+plugins already parse, those are reused unchanged for the piggyback hosts --
+there is no collision at the check-plugin level with Checkmk's built-in
+Citrix monitoring there. The package does ship one own check plugin, on the
+host running this special agent itself (the DDC host): it reports the
+``citrix_ddc_rest_source`` section as a "Citrix DDC Statistics" service, i.e. the
+special agent's own run health (auth/site-id lookup ok, machines/sessions
+retrieved, query duration), since piggyback sections alone give no visible
+service if the agent run itself fails.
 
 Known limitation: the Citrix CVAD REST API has no documented equivalent for
 ``Get-BrokerController`` (controller health/licensing state). The
@@ -50,7 +53,7 @@ from typing import Any
 from urllib.error import HTTPError, URLError
 from urllib.request import Request, urlopen
 
-VERSION = "0.1.0"
+VERSION = "1.0.0"
 
 
 class AgentError(RuntimeError):
@@ -61,7 +64,7 @@ def _hide_process_title() -> None:
     try:
         import setproctitle  # type: ignore
 
-        setproctitle.setproctitle("agent_citrix_vad_rest")
+        setproctitle.setproctitle("agent_citrix_ddc_rest")
     except Exception:
         pass
 
@@ -77,11 +80,6 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--timeout", type=int, default=20, help="Per-request timeout in seconds")
     parser.add_argument("--max-machines", type=int, default=2000, help="Safety limit for fetched machines")
     parser.add_argument("--max-sessions", type=int, default=10000, help="Safety limit for fetched sessions")
-    parser.add_argument(
-        "--strip-domain-suffix",
-        default="",
-        help="DNS domain suffix to strip from piggyback host names, e.g. .corp.example.com",
-    )
     parser.add_argument(
         "--no-hostsystem",
         action="store_true",
@@ -108,6 +106,7 @@ class CvadClient:
         self.timeout = timeout
         self.bearer = ""
         self.customer_id = "CitrixOnPremises"
+        self.instance_id = ""
 
     def _request(self, method: str, path: str, headers: dict[str, str], body: bytes | None = None) -> Any:
         url = f"{self.base}{path}"
@@ -137,7 +136,7 @@ class CvadClient:
             headers={"Authorization": f"Basic {basic}", "Accept": "application/json"},
         )
         if not isinstance(resp, dict):
-            raise AgentError("Token-Response war kein JSON-Objekt")
+            raise AgentError("Token response was not a JSON object")
         # The CVAD REST API returns PascalCase field names ("Token",
         # "CustomerId") -- look them up case-insensitively so a future
         # casing change does not silently break authentication.
@@ -145,17 +144,58 @@ class CvadClient:
         bearer = resp.get(lower_map["token"]) if "token" in lower_map else None
         if not bearer:
             keys = sorted(resp.keys())
-            raise AgentError(f"Token-Response enthielt kein erkennbares Token-Feld. Vorhandene Felder: {keys}")
+            raise AgentError(f"Token response contained no recognizable token field. Available fields: {keys}")
         self.bearer = str(bearer)
         if "customerid" in lower_map and resp.get(lower_map["customerid"]):
             self.customer_id = str(resp[lower_map["customerid"]])
 
+    def fetch_site_id(self) -> None:
+        """Resolve the Citrix-InstanceId (site id) via /cvad/manage/Me.
+
+        The CVAD REST API requires this header on data endpoints such as
+        Machines/Sessions; Tokens alone is not enough, so this must run
+        right after authenticate() and before any other request.
+        """
+        resp = self._request(
+            "GET",
+            "/cvad/manage/Me",
+            headers={
+                "Authorization": f"CWSAuth Bearer={self.bearer}",
+                "Citrix-CustomerId": self.customer_id,
+                "Accept": "application/json",
+            },
+        )
+        if not isinstance(resp, dict):
+            raise AgentError("Me response was not a JSON object")
+        lower_map = {k.lower(): k for k in resp}
+        customers = resp.get(lower_map["customers"]) if "customers" in lower_map else None
+        if not isinstance(customers, list) or not customers:
+            raise AgentError("Me response contained no customers array, could not determine site ID")
+        first_customer = customers[0]
+        if not isinstance(first_customer, dict):
+            raise AgentError("Me response: first customer entry was not a JSON object")
+        customer_lower = {k.lower(): k for k in first_customer}
+        sites = first_customer.get(customer_lower["sites"]) if "sites" in customer_lower else None
+        if not isinstance(sites, list) or not sites:
+            raise AgentError("Me response contained no sites, could not determine site ID")
+        first_site = sites[0]
+        if not isinstance(first_site, dict):
+            raise AgentError("Me response: first site entry was not a JSON object")
+        site_lower = {k.lower(): k for k in first_site}
+        site_id = first_site.get(site_lower["id"]) if "id" in site_lower else None
+        if not site_id:
+            raise AgentError("Me response: site entry contained no id")
+        self.instance_id = str(site_id)
+
     def _auth_headers(self) -> dict[str, str]:
-        return {
+        headers = {
             "Authorization": f"CWSAuth Bearer={self.bearer}",
             "Citrix-CustomerId": self.customer_id,
             "Accept": "application/json",
         }
+        if self.instance_id:
+            headers["Citrix-InstanceId"] = self.instance_id
+        return headers
 
     def get_items(self, path: str, max_items: int) -> list[dict[str, Any]]:
         """GET a CVAD collection endpoint, following ContinuationToken paging."""
@@ -181,22 +221,15 @@ class CvadClient:
         return items[:max_items]
 
 
-def _strip_suffix(name: str, suffix: str) -> str:
-    if suffix and name.lower().endswith(suffix.lower()):
-        return name[: -len(suffix)]
-    return name
-
-
-def _short_name(dns_or_name: str, strip_suffix: str) -> str:
+def _short_name(dns_or_name: str) -> str:
     """Reduce a DNS/NetBIOS machine identity to a bare, piggyback-safe host name."""
     name = dns_or_name or ""
     if "\\" in name:
         name = name.rsplit("\\", 1)[-1]
-    name = _strip_suffix(name, strip_suffix)
     return name.strip()
 
 
-def _machine_identity(machine: dict[str, Any], strip_suffix: str) -> str:
+def _machine_identity(machine: dict[str, Any]) -> str:
     """Pick the best available piggyback host name for a CVAD machine.
 
     Preference order mirrors citrix_farm.ps1 (Hosting.HostedMachineName) but
@@ -207,11 +240,11 @@ def _machine_identity(machine: dict[str, Any], strip_suffix: str) -> str:
     hosting = machine.get("Hosting") or {}
     hosted_name = hosting.get("HostedMachineName")
     if hosted_name:
-        return _short_name(str(hosted_name), strip_suffix)
+        return _short_name(str(hosted_name))
     dns_name = machine.get("DnsName")
     if dns_name:
-        return _short_name(str(dns_name), strip_suffix)
-    return _short_name(str(machine.get("Name") or ""), strip_suffix)
+        return _short_name(str(dns_name))
+    return _short_name(str(machine.get("Name") or ""))
 
 
 def _bool_str(value: Any) -> str | None:
@@ -296,11 +329,10 @@ def emit_sessions_section(machine: dict[str, Any], session_counts: dict[str, dic
 def emit_piggyback(
     machines: list[dict[str, Any]],
     session_counts: dict[str, dict[str, int]],
-    strip_suffix: str,
     emit_hostsystem: bool,
 ) -> None:
     for machine in machines:
-        identity = _machine_identity(machine, strip_suffix)
+        identity = _machine_identity(machine)
         if not identity:
             continue
         print(f"<<<<{identity}>>>>")
@@ -317,7 +349,7 @@ def emit_piggyback(
         hosting_server = hosting.get("HostingServerName")
         if not hosting_server:
             continue
-        hosting_server_name = _short_name(str(hosting_server), strip_suffix)
+        hosting_server_name = _short_name(str(hosting_server))
         pool_name = (hosting.get("HypervisorConnection") or {}).get("Name") or ""
         print(f"<<<<{hosting_server_name}>>>>")
         print("<<<citrix_hostsystem>>>")
@@ -328,7 +360,7 @@ def emit_piggyback(
 
 
 def emit_source(payload: dict[str, Any]) -> None:
-    print("<<<citrix_vad_rest_source:sep(0)>>>")
+    print("<<<citrix_ddc_rest_source:sep(0)>>>")
     print(json.dumps(payload, ensure_ascii=False, separators=(",", ":")))
 
 
@@ -341,10 +373,11 @@ def main(argv: list[str] | None = None) -> int:
 
     try:
         client.authenticate(args.user, args.password)
+        client.fetch_site_id()
         machines = client.get_items("/cvad/manage/Machines", args.max_machines)
         sessions = client.get_items("/cvad/manage/Sessions", args.max_sessions)
         session_counts = build_session_counts(sessions)
-        emit_piggyback(machines, session_counts, args.strip_domain_suffix, not args.no_hostsystem)
+        emit_piggyback(machines, session_counts, not args.no_hostsystem)
         duration = (datetime.now(timezone.utc) - started).total_seconds()
         emit_source(
             {
@@ -371,7 +404,7 @@ def main(argv: list[str] | None = None) -> int:
                 "timestamp": datetime.now(timezone.utc).isoformat(),
             }
         )
-        sys.stderr.write(f"citrix_vad_rest: {exc}\n")
+        sys.stderr.write(f"citrix_ddc_rest: {exc}\n")
         return 1
 
 

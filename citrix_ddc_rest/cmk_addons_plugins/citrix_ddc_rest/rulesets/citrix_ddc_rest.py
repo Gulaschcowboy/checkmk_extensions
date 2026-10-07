@@ -18,25 +18,16 @@ from cmk.rulesets.v1.rule_specs import SpecialAgent, Topic
 
 def _formspec():
     return Dictionary(
-        title=Title("Citrix Virtual Apps and Desktops (CVAD REST API)"),
+        title=Title("Citrix Virtual Apps and Desktops (via REST API)"),
         help_text=Help(
-            "Poll a Citrix Delivery Controller (DDC) over the on-premises CVAD REST "
+            "Polls a Citrix Delivery Controller (DDC) over the on-premises CVAD REST "
             "API (Citrix Orchestration Service, requires CVAD 2212 or newer) and "
-            "create piggyback hosts for the Citrix VDA machines and hypervisor hosts, "
-            "using the exact same agent sections (citrix_state, citrix_serverload, "
-            "citrix_sessions, citrix_hostsystem) that Citrix's own Windows agent "
-            "plug-in citrix_farm.ps1 produces. This means Checkmk's built-in Citrix "
-            "checks are used unchanged -- this package ships no custom check plug-ins "
-            "of its own, so there is no collision with Checkmk's built-in Citrix "
-            "monitoring at the check-plug-in level. "
-            "Do not run this special agent and citrix_farm.ps1 for the same machines "
-            "at the same time. "
-            "Limitation: the CVAD REST API has no documented equivalent for "
-            "Get-BrokerController, so controller health/licensing (citrix_controller "
-            "service) cannot be populated this way and still requires citrix_farm.ps1 "
-            "on the DDC if needed. "
-            "Create a dedicated Citrix administrator account (Read-Only Administrator "
-            "role is sufficient) for the user/password below."
+            "creates piggyback data for the Citrix VDA machines and hypervisor hosts "
+            "running them. \n"
+            "If your Checkmk hosts are configured with short names but Citrix reports "
+            "FQDNs (or vice versa), use Checkmk's built-in ruleset 'Host name "
+            "translation for piggybacked hosts' (option 'Drop domain part') on this "
+            "host."
         ),
         elements={
             "ddc_address": DictElement(
@@ -111,17 +102,6 @@ def _formspec():
                     custom_validate=(validators.NumberInRange(min_value=1),),
                 ),
             ),
-            "strip_domain_suffix": DictElement(
-                required=False,
-                parameter_form=String(
-                    title=Title("DNS domain suffix to strip from piggyback host names"),
-                    help_text=Help(
-                        "Optional, e.g. .corp.example.com. Mirrors the $DNSdomain "
-                        "setting of citrix_farm.ps1, so generated piggyback host "
-                        "names match your existing Checkmk host names."
-                    ),
-                ),
-            ),
             "no_hostsystem": DictElement(
                 required=False,
                 parameter_form=BooleanChoice(
@@ -139,9 +119,9 @@ def _formspec():
     )
 
 
-rule_spec_citrix_vad_rest = SpecialAgent(
-    name="citrix_vad_rest",
-    title=Title("Citrix Virtual Apps and Desktops (CVAD REST API)"),
+rule_spec_citrix_ddc_rest = SpecialAgent(
+    name="citrix_ddc_rest",
+    title=Title("Citrix Virtual Apps and Desktops (via REST API)"),
     topic=Topic.VIRTUALIZATION,
     parameter_form=_formspec,
 )

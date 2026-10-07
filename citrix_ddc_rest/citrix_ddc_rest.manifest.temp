@@ -1,0 +1,35 @@
+{'author': 'Alex Wilms',
+ 'description': 'Special agent for Citrix Virtual Apps and Desktops (CVAD) '
+                'via the on-premises CVAD REST API (Citrix Orchestration '
+                'Service, requires CVAD 2212 or newer). Authenticates with '
+                'a Citrix (read-only) admin user/password against the '
+                'Delivery Controller and polls /cvad/manage/Machines and '
+                '/cvad/manage/Sessions. Emits piggyback data using the '
+                'exact same agent sections (citrix_state, citrix_serverload, '
+                'citrix_sessions, citrix_hostsystem) as Checkmk\'s own '
+                'Windows agent plug-in citrix_farm.ps1, so Checkmk\'s '
+                'built-in Citrix checks are reused unchanged for the '
+                'piggyback hosts. The package does ship one own check '
+                'plug-in ("Citrix DDC Statistics" service) that reports '
+                'the special agent\'s own health (auth, site-ID lookup, '
+                'machines/sessions retrieved, duration) on the host '
+                'running the special agent itself. Useful when running '
+                'citrix_farm.ps1 directly on the Delivery Controller is '
+                'not desired/possible, since this agent runs remotely '
+                'from the Checkmk server over HTTPS.\n'
+                'Limitation: the CVAD REST API has no documented '
+                'equivalent for Get-BrokerController, so Citrix '
+                'Controller licensing/health (citrix_controller service) '
+                'is not covered.',
+ 'download_url': 'https://github.com/Gulaschcowboy/checkmk_extensions',
+ 'files': {'cmk_addons_plugins': ['citrix_ddc_rest/agent_based/citrix_ddc_rest_source.py',
+                                  'citrix_ddc_rest/checkman/citrix_ddc_rest_source',
+                                  'citrix_ddc_rest/libexec/agent_citrix_ddc_rest',
+                                  'citrix_ddc_rest/rulesets/citrix_ddc_rest.py',
+                                  'citrix_ddc_rest/server_side_calls/citrix_ddc_rest.py']},
+ 'name': 'citrix_ddc_rest',
+ 'title': 'Citrix Virtual Apps and Desktops (via REST API)',
+ 'version': '1.0.0',
+ 'version.min_required': '2.5.0',
+ 'version.packaged': '2.5.0',
+ 'version.usable_until': None}
