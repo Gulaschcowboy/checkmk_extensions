@@ -7,7 +7,6 @@ from cmk.rulesets.v1.form_specs import (
     Dictionary,
     Integer,
     Password,
-    String,
     validators,
     migrate_to_password,
 )
@@ -72,19 +71,6 @@ def _formspec():
                     title=Title("Request timeout (seconds)"),
                     prefill=DefaultValue(20),
                     custom_validate=(validators.NumberInRange(min_value=1, max_value=300),),
-                ),
-            ),
-            "smart_devices": DictElement(
-                required=False,
-                parameter_form=String(
-                    title=Title("SMART devices to monitor"),
-                    help_text=Help(
-                        "Regular expression matching the OPNsense disk device "
-                        "names for which SMART data should be collected. "
-                        "Examples: {ada0}, {^ada}, {ada0|nvme0}. Default is "
-                        "{.*} (all devices)."
-                    ),
-                    prefill=DefaultValue(".*"),
                 ),
             ),
         },

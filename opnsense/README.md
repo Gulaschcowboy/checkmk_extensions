@@ -71,18 +71,11 @@ unaffected.
 
 ### Which disks are monitored
 
-The special-agent rule has an optional **SMART devices to monitor** field: a
-regular expression matched against the OPNsense device names, so a box with
-USB bridges that smartctl cannot talk to does not produce UNKNOWN services.
-
-| Value       | Effect                                       |
-|-------------|----------------------------------------------|
-| `.*`        | All devices (default)                        |
-| `ada0`      | Only `ada0`                                  |
-| `^ada`      | All `ada*` devices                           |
-| `ada0\|nvme0` | `ada0` or `nvme0`                          |
-
-Non-matching devices are neither queried nor discovered.
+All disks reported by OPNsense's os-smart plugin are collected and
+discovered — there is no device filter in the special-agent rule. To exclude
+a disk you don't want monitored (e.g. a USB bridge that smartctl cannot
+query), disable the resulting `opnsense_smart` service for that disk via a
+normal Checkmk "disabled services" rule instead.
 
 ### Thresholds
 
@@ -120,9 +113,11 @@ health and temperature are reported.
   self-assessment, temperature and SSD life remaining per physical disk,
   collected through the OPNsense os-smart plugin (`api/smart/service/*`).
   Requires the os-smart plugin and the `Services: SMART` privilege on
-  OPNsense. Adds an optional **SMART devices to monitor** regular expression
-  to the special-agent rule, an `OPNsense disk health (SMART)` parameter rule
-  (health state, temperature and SSD life levels) and the
+  OPNsense. All disks reported by os-smart are always collected — to exclude
+  a disk (e.g. a USB bridge that smartctl cannot query) use a normal Checkmk
+  "disabled services" rule on the resulting `opnsense_smart` service instead
+  of a special-agent-side filter. Adds an `OPNsense disk health (SMART)`
+  parameter rule (health state, temperature and SSD life levels) and the
   `ssd_life_remaining` metric/graph. Temperature reuses the canonical `temp`
   metric.
 - 1.0.3: Fix `cmk-validate-plugins` error on `opnsense_memory`/`opnsense_disk`
@@ -150,9 +145,6 @@ special-agent ruleset). Supply:
   the process list.
 - **Port** — default `8443`.
 - **TLS certificate check** — can be disabled for self-signed certificates.
-- **SMART devices to monitor** — optional regular expression selecting the
-  disks to poll for SMART data (see the *SMART disk health* section), default
-  `.*`.
 
 Create an API key/secret in OPNsense under *System → Access → Users →
 (edit user) → API keys*.

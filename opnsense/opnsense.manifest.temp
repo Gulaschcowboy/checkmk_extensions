@@ -5,8 +5,9 @@
                 'uptime, load, memory, swap, filesystem usage and SMART disk '
                 'health when the os-smart plugin is installed: health '
                 'self-assessment, temperature and SSD life remaining. '
-                'Device-level SMART filtering is supported via a regular '
-                'expression. Configurable HTTPS port (default 8443) and '
+                'All disks reported by os-smart are collected; unwanted '
+                'ones can be excluded via a Checkmk disabled-services rule. '
+                'Configurable HTTPS port (default 8443) and '
                 'optional TLS certificate check bypass for self-signed '
                 'certificates.',
  'download_url': 'https://github.com/Gulaschcowboy/checkmk_extensions',
