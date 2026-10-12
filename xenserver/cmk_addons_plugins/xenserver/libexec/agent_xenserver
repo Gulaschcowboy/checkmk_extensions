@@ -1,0 +1,738 @@
+#!/usr/bin/env python3
+"""Checkmk special agent for XenServer / XCP-ng pools via XAPI.
+
+Read-only: logs in at the pool coordinator (following HOST_IS_SLAVE),
+reads the inventory with <class>.get_all_records, fetches RRD metrics
+(rrd_updates) from every pool member and writes:
+
+  - pool sections (pool, shared SRs, alerts) for the queried host
+  - one piggyback block per XenServer host (host data, local SRs)
+  - one piggyback block per VM
+
+Only the Python standard library is used.
+"""
+import argparse
+import calendar
+import json
+import math
+import os
+import re
+import socket
+import ssl
+import sys
+import time
+import urllib.error
+import urllib.request
+import xml.etree.ElementTree as ET
+import xmlrpc.client
+
+AGENT_VERSION = "1.0.0"
+NULL_REF = "OpaqueRef:NULL"
+
+CORE_CLASSES = (
+    "pool", "host", "host_metrics", "host_cpu", "VM", "VM_metrics",
+    "VM_guest_metrics", "SR", "PBD", "VDI", "VBD", "VIF", "PIF",
+    "PIF_metrics", "network", "Bond",
+)
+OPTIONAL_CLASSES = ("Certificate", "VMSS")
+
+SKIP_SR_TYPES = {"udev", "iso", "tmpfs"}
+SKIP_SR_CONTENT = {"iso"}
+
+
+class XapiError(Exception):
+    def __init__(self, description):
+        super().__init__(" ".join(str(d) for d in description))
+        self.description = list(description)
+
+
+# ---------------------------------------------------------------------------
+# XAPI client
+# ---------------------------------------------------------------------------
+class Xapi:
+    def __init__(self, scheme, address, port, ctx, timeout):
+        self.scheme = scheme
+        self.address = address
+        self.port = port
+        self.ctx = ctx
+        self.timeout = timeout
+        self.session = None
+        self.proxy = xmlrpc.client.ServerProxy(
+            self.base_url(address) + "/",
+            context=ctx if scheme == "https" else None,
+            allow_none=True,
+            use_builtin_types=False,  # XAPI dateTime values end with 'Z'
+        )
+
+    def base_url(self, address):
+        host = "[%s]" % address if ":" in address and not address.startswith("[") else address
+        default = 443 if self.scheme == "https" else 80
+        port = "" if self.port == default else ":%d" % self.port
+        return "%s://%s%s" % (self.scheme, host, port)
+
+    def call(self, method, *params):
+        func = self.proxy
+        for part in method.split("."):
+            func = getattr(func, part)
+        res = func(*params)
+        if not isinstance(res, dict) or res.get("Status") != "Success":
+            raise XapiError(res.get("ErrorDescription", ["UNKNOWN"]) if isinstance(res, dict) else [repr(res)])
+        return res.get("Value")
+
+    def scall(self, method, *params):
+        return self.call(method, self.session, *params)
+
+    def login(self, user, password):
+        self.session = self.call("session.login_with_password", user, password,
+                                 "1.0", "checkmk-agent_xenserver/" + AGENT_VERSION)
+
+    def logout(self):
+        if self.session:
+            try:
+                self.call("session.logout", self.session)
+            except Exception:  # pylint: disable=broad-except
+                pass
+            self.session = None
+
+
+def make_ssl_context(no_cert_check, ca_file):
+    if no_cert_check:
+        ctx = ssl.create_default_context()
+        ctx.check_hostname = False
+        ctx.verify_mode = ssl.CERT_NONE
+        return ctx
+    return ssl.create_default_context(cafile=ca_file) if ca_file else ssl.create_default_context()
+
+
+def connect(args, ctx):
+    """Log in at the coordinator. Follows HOST_IS_SLAVE and tries the
+    configured failover members when an address is unreachable."""
+    candidates = [args.address] + [a for a in args.pool_members if a]
+    errors = []
+    for cand in candidates:
+        target = cand
+        for _hop in range(3):
+            api = Xapi(args.scheme, target, args.port, ctx, args.timeout)
+            try:
+                api.login(args.user, args.password)
+                return api, errors
+            except XapiError as exc:
+                if exc.description and exc.description[0] == "HOST_IS_SLAVE" and len(exc.description) > 1:
+                    target = exc.description[1]
+                    continue
+                if exc.description and exc.description[0] == "SESSION_AUTHENTICATION_FAILED":
+                    raise
+                errors.append("%s: %s" % (target, exc))
+                break
+            except (OSError, ssl.SSLError, xmlrpc.client.ProtocolError) as exc:
+                errors.append("%s: %s" % (target, exc))
+                break
+    raise ConnectionError("; ".join(errors) or "no address to connect to")
+
+
+# ---------------------------------------------------------------------------
+# helpers
+# ---------------------------------------------------------------------------
+def to_epoch(value):
+    """XAPI dateTime ('20261011T00:26:49Z' or DateTime) -> epoch or None."""
+    if value is None:
+        return None
+    text = value.value if isinstance(value, xmlrpc.client.DateTime) else str(value)
+    text = text.strip()
+    for fmt in ("%Y%m%dT%H:%M:%SZ", "%Y%m%dT%H:%M:%S", "%Y-%m-%dT%H:%M:%SZ"):
+        try:
+            ts = calendar.timegm(time.strptime(text, fmt))
+        except ValueError:
+            continue
+        return ts if ts > 86400 else None  # 19700101T00:00:00Z means "unset"
+    return None
+
+
+def to_int(value, default=None):
+    try:
+        return int(float(value))
+    except (TypeError, ValueError):
+        return default
+
+
+def to_float(value, default=None):
+    try:
+        f = float(value)
+    except (TypeError, ValueError):
+        return default
+    return None if math.isnan(f) or math.isinf(f) else f
+
+
+def ref_ok(ref):
+    return bool(ref) and ref != NULL_REF
+
+
+def piggyback_name(name):
+    name = re.sub(r"\s+", "_", str(name).strip())
+    return re.sub(r"[^A-Za-z0-9_.\-]", "_", name) or "unnamed"
+
+
+def out_section(lines, name, payload):
+    lines.append("<<<%s:sep(0)>>>" % name)
+    if isinstance(payload, list):
+        for item in payload:
+            lines.append(json.dumps(item, sort_keys=True, separators=(",", ":")))
+    else:
+        lines.append(json.dumps(payload, sort_keys=True, separators=(",", ":")))
+
+
+def parse_mpath(value):
+    """PBD other_config 'mpath-<scsi>' looks like '[1, 2]' (active, total)."""
+    nums = re.findall(r"\d+", str(value))
+    if len(nums) >= 2:
+        return [int(nums[0]), int(nums[1])]
+    return None
+
+
+# ---------------------------------------------------------------------------
+# RRD
+# ---------------------------------------------------------------------------
+def fetch_rrd(args, ctx, session, address):
+    """Return {(kind, uuid): {ds: latest_value}} from one host."""
+    start = int(time.time()) - 300
+    api = Xapi(args.scheme, address, args.port, ctx, args.timeout)
+    url = "%s/rrd_updates?session_id=%s&start=%d&cf=AVERAGE&interval=60&host=true" % (
+        api.base_url(address), session, start)
+    req = urllib.request.Request(url, headers={"User-Agent": "checkmk-agent_xenserver"})
+    kwargs = {"timeout": args.timeout}
+    if args.scheme == "https":
+        kwargs["context"] = ctx
+    with urllib.request.urlopen(req, **kwargs) as resp:
+        body = resp.read()
+    return parse_rrd_xml(body)
+
+
+def parse_rrd_xml(body):
+    root = ET.fromstring(body)
+    legend = [e.text or "" for e in root.findall("./meta/legend/entry")]
+    rows = []
+    for row in root.findall("./data/row"):
+        t = to_int(row.findtext("t"), 0)
+        rows.append((t, [v.text for v in row.findall("v")]))
+    rows.sort(key=lambda r: r[0], reverse=True)  # newest first
+    return rrd_latest(legend, rows)
+
+
+def rrd_latest(legend, rows):
+    result = {}
+    for idx, entry in enumerate(legend):
+        parts = entry.split(":", 3)
+        if len(parts) != 4:
+            continue
+        _cf, kind, uuid, ds = parts
+        value = None
+        for _t, values in rows:
+            if idx < len(values):
+                value = to_float(values[idx])
+                if value is not None:
+                    break
+        if value is not None:
+            result.setdefault((kind, uuid), {})[ds] = value
+    return result
+
+
+# ---------------------------------------------------------------------------
+# collection
+# ---------------------------------------------------------------------------
+def collect(args):
+    ctx = make_ssl_context(args.no_cert_check, args.ca_file)
+    socket.setdefaulttimeout(args.timeout)
+    api, conn_errors = connect(args, ctx)
+    data = {"_errors": [], "_connected_to": api.address, "_conn_errors": conn_errors}
+    try:
+        for cls in CORE_CLASSES:
+            data[cls] = api.scall("%s.get_all_records" % cls)
+        for cls in OPTIONAL_CLASSES:
+            try:
+                data[cls] = api.scall("%s.get_all_records" % cls)
+            except XapiError:
+                data[cls] = {}
+
+        # clock offset per host (vs. this Checkmk server)
+        data["_servertime"] = {}
+        for href in data["host"]:
+            try:
+                t0 = time.time()
+                st = api.scall("host.get_servertime", href)
+                t1 = time.time()
+                ts = to_epoch(st)
+                if ts is not None:
+                    data["_servertime"][href] = ts - (t0 + t1) / 2.0
+            except Exception as exc:  # pylint: disable=broad-except
+                data["_errors"].append("servertime %s: %s" % (data["host"][href].get("name_label"), exc))
+
+        # messages / alerts
+        data["_messages"] = {}
+        if args.alerts_hours > 0:
+            since = time.strftime("%Y%m%dT%H:%M:%SZ",
+                                  time.gmtime(time.time() - args.alerts_hours * 3600))
+            try:
+                data["_messages"] = api.scall("message.get_since", xmlrpc.client.DateTime(since))
+            except Exception as exc:  # pylint: disable=broad-except
+                data["_errors"].append("messages: %s" % exc)
+
+        # RRD from every pool member
+        data["_rrd"] = {}
+        data["_rrd_errors"] = {}
+        if not args.no_rrd:
+            for href, host in data["host"].items():
+                addr = host.get("address")
+                if not addr:
+                    data["_rrd_errors"][href] = "host has no address"
+                    continue
+                try:
+                    data["_rrd"][href] = fetch_rrd(args, ctx, api.session, addr)
+                except Exception as exc:  # pylint: disable=broad-except
+                    data["_rrd_errors"][href] = "%s: %s" % (addr, exc)
+    finally:
+        api.logout()
+    return data
+
+
+# ---------------------------------------------------------------------------
+# rendering
+# ---------------------------------------------------------------------------
+def build_output(args, data, now=None):
+    now = time.time() if now is None else now
+    lines = []
+    hosts = data.get("host", {})
+    pools = list(data.get("pool", {}).values())
+    pool = pools[0] if pools else {}
+    coordinator_ref = pool.get("master")
+
+    rrd = {}
+    for per_host in data.get("_rrd", {}).values():
+        for key, values in per_host.items():
+            rrd.setdefault(key, {}).update(values)
+
+    def rrd_of(kind, uuid):
+        return rrd.get((kind, uuid), {})
+
+    def rec(cls, ref):
+        return data.get(cls, {}).get(ref, {}) if ref_ok(ref) else {}
+
+    host_name = {}
+    for href, h in hosts.items():
+        if args.host_naming == "hostname" and h.get("hostname"):
+            host_name[href] = h["hostname"]
+        else:
+            host_name[href] = h.get("name_label") or h.get("hostname") or h.get("uuid", href)
+
+    # ---- VMs -----------------------------------------------------------
+    vms = {ref: v for ref, v in data.get("VM", {}).items()
+           if not v.get("is_a_template") and not v.get("is_a_snapshot")
+           and not v.get("is_control_domain")}
+    running_per_host = {}
+    for v in vms.values():
+        if v.get("power_state") == "Running":
+            running_per_host[v.get("resident_on")] = running_per_host.get(v.get("resident_on"), 0) + 1
+
+    # ---- pool section --------------------------------------------------
+    pool_name = pool.get("name_label") or host_name.get(coordinator_ref) or "pool"
+    pool_hosts = []
+    for href, h in sorted(hosts.items(), key=lambda kv: host_name[kv[0]]):
+        hm = rec("host_metrics", h.get("metrics"))
+        pool_hosts.append({
+            "name": host_name[href],
+            "uuid": h.get("uuid"),
+            "address": h.get("address"),
+            "enabled": bool(h.get("enabled")),
+            "live": hm.get("live"),
+            "coordinator": href == coordinator_ref,
+            "rrd_error": data.get("_rrd_errors", {}).get(href),
+            "running_vms": running_per_host.get(href, 0),
+        })
+    pool_payload = {
+        "name": pool_name,
+        "name_label": pool.get("name_label") or "",
+        "uuid": pool.get("uuid"),
+        "coordinator": host_name.get(coordinator_ref),
+        "connected_to": data.get("_connected_to"),
+        "connect_errors": data.get("_conn_errors", []),
+        "ha_enabled": bool(pool.get("ha_enabled")),
+        "ha_host_failures_to_tolerate": to_int(pool.get("ha_host_failures_to_tolerate"), 0),
+        "ha_plan_exists_for": to_int(pool.get("ha_plan_exists_for"), 0),
+        "ha_overcommitted": bool(pool.get("ha_overcommitted")),
+        "update_sync_enabled": pool.get("update_sync_enabled"),
+        "update_sync_frequency": pool.get("update_sync_frequency"),
+        "last_update_sync": to_epoch(pool.get("last_update_sync")),
+        "hosts": pool_hosts,
+        "vms_total": len(vms),
+        "vms_running": sum(1 for v in vms.values() if v.get("power_state") == "Running"),
+        "errors": data.get("_errors", []),
+        "agent_version": AGENT_VERSION,
+    }
+    out_section(lines, "xenserver_pool", pool_payload)
+
+    # ---- SRs -----------------------------------------------------------
+    pbds_by_sr = {}
+    for pbd in data.get("PBD", {}).values():
+        pbds_by_sr.setdefault(pbd.get("SR"), []).append(pbd)
+    shared_srs, local_srs = [], {}
+    for sref, sr in data.get("SR", {}).items():
+        if sr.get("type") in SKIP_SR_TYPES or sr.get("content_type") in SKIP_SR_CONTENT:
+            continue
+        uuid8 = (sr.get("uuid") or "")[:8]
+        pbds = []
+        io = {"read_bytes": 0.0, "write_bytes": 0.0, "read_ios": 0.0, "write_ios": 0.0}
+        lat = {"read_latency_us": None, "write_latency_us": None, "queue": None}
+        io_seen = False
+        for pbd in pbds_by_sr.get(sref, []):
+            href = pbd.get("host")
+            mpath = {}
+            for key, val in (pbd.get("other_config") or {}).items():
+                if key.startswith("mpath-"):
+                    parsed = parse_mpath(val)
+                    if parsed:
+                        mpath[key[6:]] = parsed
+            pbds.append({"host": host_name.get(href, href), "attached": bool(pbd.get("currently_attached")),
+                         "multipathed": (pbd.get("other_config") or {}).get("multipathed") == "true",
+                         "mpath": mpath})
+            hvals = rrd_of("host", hosts.get(href, {}).get("uuid"))
+            for src, dst in (("read_", "read_bytes"), ("write_", "write_bytes"),
+                             ("iops_read_", "read_ios"), ("iops_write_", "write_ios")):
+                val = hvals.get(src + uuid8)
+                if val is not None:
+                    io[dst] += val
+                    io_seen = True
+            for src, dst in (("read_latency_", "read_latency_us"), ("write_latency_", "write_latency_us"),
+                             ("avgqu_sz_", "queue")):
+                val = hvals.get(src + uuid8)
+                if val is not None:
+                    lat[dst] = val if lat[dst] is None else max(lat[dst], val)
+        item = {
+            "name": sr.get("name_label") or uuid8,
+            "uuid": sr.get("uuid"),
+            "type": sr.get("type"),
+            "content_type": sr.get("content_type"),
+            "shared": bool(sr.get("shared")),
+            "size": to_int(sr.get("physical_size"), 0),
+            "used": to_int(sr.get("physical_utilisation"), 0),
+            "allocated": to_int(sr.get("virtual_allocation"), 0),
+            "pbds": pbds,
+            "io": dict(io, **lat) if io_seen else None,
+        }
+        hosts_of_sr = {p.get("host") for p in pbds_by_sr.get(sref, [])}
+        if item["shared"] or len(hosts_of_sr) != 1:
+            shared_srs.append(item)
+        else:
+            local_srs.setdefault(hosts_of_sr.pop(), []).append(item)
+    out_section(lines, "xenserver_srs", _unique_names(shared_srs))
+
+    # ---- alerts --------------------------------------------------------
+    obj_names = {}
+    for cls, key in (("VM", "VM"), ("host", "Host"), ("SR", "SR"), ("pool", "Pool")):
+        for r in data.get(cls, {}).values():
+            if r.get("uuid"):
+                obj_names[r["uuid"]] = r.get("name_label") or r["uuid"]
+    msgs = []
+    counts = {}
+    for m in data.get("_messages", {}).values():
+        prio = to_int(m.get("priority"), 5)
+        counts[str(prio)] = counts.get(str(prio), 0) + 1
+        if prio <= 4:
+            msgs.append({
+                "name": m.get("name"),
+                "priority": prio,
+                "time": to_epoch(m.get("timestamp")),
+                "class": m.get("cls"),
+                "object": obj_names.get(m.get("obj_uuid"), m.get("obj_uuid")),
+                "body": str(m.get("body") or "")[:300],
+            })
+    msgs.sort(key=lambda m: (m["time"] or 0), reverse=True)
+    out_section(lines, "xenserver_alerts", {"window_hours": args.alerts_hours,
+                                            "counts": counts, "messages": msgs[:100],
+                                            "enabled": args.alerts_hours > 0})
+
+    # ---- per host ------------------------------------------------------
+    certs_by_host = {}
+    for c in data.get("Certificate", {}).values():
+        certs_by_host.setdefault(c.get("host"), []).append(c)
+    pifs_by_host = {}
+    for pref, pif in data.get("PIF", {}).items():
+        pifs_by_host.setdefault(pif.get("host"), []).append((pref, pif))
+    bond_master_pifs = {b.get("master") for b in data.get("Bond", {}).values()}
+
+    own = {args.hostname.lower(), args.hostname.lower().split(".")[0]} if args.hostname else set()
+    for href, h in sorted(hosts.items(), key=lambda kv: host_name[kv[0]]):
+        name = host_name[href]
+        hm = rec("host_metrics", h.get("metrics"))
+        hr = rrd_of("host", h.get("uuid"))
+        lic = h.get("license_params") or {}
+        sw = h.get("software_version") or {}
+        cpu_model = None
+        for cref in h.get("host_CPUs") or []:
+            cpu_model = rec("host_cpu", cref).get("modelname")
+            if cpu_model:
+                break
+        cpu_model = cpu_model or (h.get("cpu_info") or {}).get("modelname")
+        boot = to_float((h.get("other_config") or {}).get("boot_time"))
+        pifs = []
+        for pref, pif in sorted(pifs_by_host.get(href, []), key=lambda p: p[1].get("device") or ""):
+            is_bond = pref in bond_master_pifs
+            if not (pif.get("physical") or is_bond) or to_int(pif.get("VLAN"), -1) not in (-1, None):
+                continue
+            pm = rec("PIF_metrics", pif.get("metrics"))
+            dev = pif.get("device") or pif.get("uuid")
+            pifs.append({
+                "device": dev,
+                "bond": is_bond,
+                "bond_slave": ref_ok(pif.get("bond_slave_of")),
+                "management": bool(pif.get("management")),
+                "attached": bool(pif.get("currently_attached")),
+                "carrier": pm.get("carrier"),
+                "speed_mbit": to_int(pm.get("speed")),
+                "duplex": pm.get("duplex"),
+                "vendor": pm.get("vendor_name"),
+                "device_name": pm.get("device_name"),
+                "mac": pif.get("MAC"),
+                "network": rec("network", pif.get("network")).get("name_label"),
+                "rx": hr.get("pif_%s_rx" % dev),
+                "tx": hr.get("pif_%s_tx" % dev),
+            })
+        cpus = sorted((int(k[3:]), v) for k, v in hr.items() if re.match(r"cpu\d+$", k))
+        host_payload = {
+            "name": name,
+            "name_label": h.get("name_label"),
+            "hostname": h.get("hostname"),
+            "uuid": h.get("uuid"),
+            "address": h.get("address"),
+            "pool": pool_name,
+            "coordinator": href == coordinator_ref,
+            "enabled": bool(h.get("enabled")),
+            "live": hm.get("live"),
+            "product": "%s %s" % (sw.get("product_brand") or sw.get("platform_name") or "Xen",
+                                  sw.get("product_version") or sw.get("platform_version") or ""),
+            "build": sw.get("build_number"),
+            "xapi": sw.get("xapi"),
+            "edition": h.get("edition"),
+            "license_expiry": to_epoch(lic.get("expiry")),
+            "css_expiry": lic.get("css_expiry"),
+            "cpu_count": to_int((h.get("cpu_info") or {}).get("cpu_count")) or len(cpus) or None,
+            "cpu_model": cpu_model,
+            "memory_total": to_int(hm.get("memory_total")),
+            "memory_free": to_int(hm.get("memory_free")),
+            "boot_time": boot,
+            "clock_offset": data.get("_servertime", {}).get(href),
+            "running_vms": running_per_host.get(href, 0),
+            "latest_synced_updates_applied": h.get("latest_synced_updates_applied"),
+            "pending_guidances": list(h.get("pending_guidances") or []),
+            "updates_requiring_reboot": len(h.get("updates_requiring_reboot") or []),
+            "last_software_update": to_epoch(h.get("last_software_update")),
+            "update_sync_enabled": pool.get("update_sync_enabled"),
+            "last_update_sync": to_epoch(pool.get("last_update_sync")),
+            "certificates": [{"name": c.get("name") or "", "type": c.get("type") or "host",
+                              "not_after": to_epoch(c.get("not_after")),
+                              "fingerprint": (c.get("fingerprint_sha256") or c.get("fingerprint") or "")[:20]}
+                             for c in certs_by_host.get(href, [])],
+            "pifs": pifs,
+            "rrd_error": data.get("_rrd_errors", {}).get(href),
+            "rrd": {
+                "cpu_avg": hr.get("cpu_avg"),
+                "cpus": len(cpus),
+                "loadavg": hr.get("loadavg"),
+                "memory_total_kib": hr.get("memory_total_kib"),
+                "memory_free_kib": hr.get("memory_free_kib"),
+                "power": hr.get("DCMI-power-reading"),
+                "running_vcpus": hr.get("running_vcpus"),
+            },
+        }
+        local = name.lower() in own or name.lower().split(".")[0] in own
+        if not local:
+            lines.append("<<<<%s>>>>" % piggyback_name(name))
+        out_section(lines, "xenserver_host", host_payload)
+        out_section(lines, "xenserver_srs", _unique_names(local_srs.get(href, [])))
+        if not local:
+            lines.append("<<<<>>>>")
+
+    # ---- per VM --------------------------------------------------------
+    if args.no_vms:
+        return lines
+    names = {}
+    for ref, v in vms.items():
+        if args.vm_naming == "uuid":
+            names[ref] = v.get("uuid")
+        else:
+            names[ref] = piggyback_name(v.get("name_label") or v.get("uuid"))
+    seen = {}
+    for n in names.values():
+        seen[n.lower()] = seen.get(n.lower(), 0) + 1
+    for ref in names:
+        if seen[names[ref].lower()] > 1:
+            names[ref] = "%s_%s" % (names[ref], (vms[ref].get("uuid") or "")[:8])
+
+    snaps_all = data.get("VM", {})
+    for ref, v in sorted(vms.items(), key=lambda kv: names[kv[0]]):
+        vr = rrd_of("vm", v.get("uuid"))
+        vm_m = rec("VM_metrics", v.get("metrics"))
+        gm = rec("VM_guest_metrics", v.get("guest_metrics"))
+        running = v.get("power_state") == "Running"
+        vcpu_vals = [val for k, val in vr.items() if re.match(r"cpu\d+$", k)]
+        vbds = []
+        for bref in v.get("VBDs") or []:
+            b = rec("VBD", bref)
+            if not b or b.get("type") != "Disk":
+                continue
+            dev = b.get("device") or b.get("userdevice")
+            vdi = rec("VDI", b.get("VDI"))
+            vbds.append({
+                "device": dev,
+                "userdevice": b.get("userdevice"),
+                "vdi": vdi.get("name_label"),
+                "size": to_int(vdi.get("virtual_size")),
+                "sr": rec("SR", vdi.get("SR")).get("name_label"),
+                "attached": bool(b.get("currently_attached")),
+                "read_bytes": vr.get("vbd_%s_read" % dev),
+                "write_bytes": vr.get("vbd_%s_write" % dev),
+                "read_ios": vr.get("vbd_%s_iops_read" % dev),
+                "write_ios": vr.get("vbd_%s_iops_write" % dev),
+                "read_latency_us": vr.get("vbd_%s_read_latency" % dev),
+                "write_latency_us": vr.get("vbd_%s_write_latency" % dev),
+            })
+        vifs = []
+        for iref in v.get("VIFs") or []:
+            i = rec("VIF", iref)
+            if not i:
+                continue
+            dev = i.get("device")
+            vifs.append({
+                "device": dev,
+                "network": rec("network", i.get("network")).get("name_label"),
+                "mac": i.get("MAC"),
+                "attached": bool(i.get("currently_attached")),
+                "rx": vr.get("vif_%s_rx" % dev),
+                "tx": vr.get("vif_%s_tx" % dev),
+            })
+        snaps = []
+        for sref in v.get("snapshots") or []:
+            s = snaps_all.get(sref, {})
+            snaps.append({"name": s.get("name_label"), "time": to_epoch(s.get("snapshot_time"))})
+        networks = gm.get("networks") or {}
+        os_version = gm.get("os_version") or {}
+        pv = gm.get("PV_drivers_version") or {}
+        vm_payload = {
+            "name": v.get("name_label"),
+            "uuid": v.get("uuid"),
+            "pool": pool_name,
+            "power_state": v.get("power_state"),
+            "host": host_name.get(v.get("resident_on")) if ref_ok(v.get("resident_on")) else None,
+            "affinity": host_name.get(v.get("affinity")) if ref_ok(v.get("affinity")) else None,
+            "vcpus": to_int(v.get("VCPUs_max")),
+            "memory_static_max": to_int(v.get("memory_static_max")),
+            "memory_dynamic_min": to_int(v.get("memory_dynamic_min")),
+            "memory_dynamic_max": to_int(v.get("memory_dynamic_max")),
+            "memory_target": to_int(v.get("memory_target")),
+            "ha_restart_priority": v.get("ha_restart_priority") or "",
+            "ha_always_run": bool(v.get("ha_always_run")),
+            "start_time": to_epoch(vm_m.get("start_time")) if running else None,
+            "guest_metrics": bool(gm),
+            "guest_last_updated": to_epoch(gm.get("last_updated")),
+            "os_name": (os_version.get("name") or os_version.get("distro") or "").split("|")[0] or None,
+            "pv_drivers_detected": gm.get("PV_drivers_detected"),
+            "pv_drivers_up_to_date": gm.get("PV_drivers_up_to_date"),
+            "pv_drivers_version": ".".join(str(pv[k]) for k in ("major", "minor", "micro", "build")
+                                           if k in pv) or None,
+            "ips": sorted({ip for k, ip in networks.items() if k.endswith("/ip") or "/ipv4/" in k}),
+            "tags": list(v.get("tags") or []),
+            "snapshots": snaps,
+            "vmss": rec("VMSS", v.get("snapshot_schedule")).get("name_label"),
+            "requires_reboot": bool(v.get("requires_reboot")),
+            "rrd": {
+                "cpu": (sum(vcpu_vals) / len(vcpu_vals)) if vcpu_vals else vr.get("cpu_usage"),
+                "memory": vr.get("memory"),
+                "memory_internal_free_kib": vr.get("memory_internal_free"),
+                "memory_target": vr.get("memory_target"),
+            },
+            "rrd_available": bool(vr),
+            "vbds": vbds,
+            "vifs": vifs,
+        }
+        lines.append("<<<<%s>>>>" % names[ref])
+        out_section(lines, "xenserver_vm", vm_payload)
+        lines.append("<<<<>>>>")
+    return lines
+
+
+def _unique_names(items):
+    count = {}
+    for it in items:
+        count[it["name"]] = count.get(it["name"], 0) + 1
+    for it in items:
+        if count[it["name"]] > 1:
+            it["name"] = "%s (%s)" % (it["name"], (it["uuid"] or "")[:8])
+    return sorted(items, key=lambda i: i["name"])
+
+
+# ---------------------------------------------------------------------------
+def lookup_password_store(raw):
+    """Resolve a Checkmk password store reference "<id>:<file>".
+
+    Only needed when run by the Checkmk core; tries the public API first
+    (2.5: cmk.password_store.v1, 2.4: v1_unstable) and falls back to the
+    internal helper of older versions."""
+    for mod in ("cmk.password_store.v1", "cmk.password_store.v1_unstable"):
+        try:
+            return __import__(mod, fromlist=["dereference_secret"]).dereference_secret(raw).reveal()
+        except (ImportError, AttributeError):
+            continue
+    from pathlib import Path
+    from cmk.utils import password_store  # pylint: disable=import-outside-toplevel
+    pw_id, pw_file = raw.split(":", 1)
+    return password_store.lookup(Path(pw_file), pw_id)
+
+
+# ---------------------------------------------------------------------------
+def parse_arguments(argv):
+    p = argparse.ArgumentParser(description=__doc__.splitlines()[0])
+    p.add_argument("address", help="pool coordinator (or any pool member)")
+    p.add_argument("--user", required=True)
+    p.add_argument("--password", help="avoid: visible in the process list. "
+                   "Default: env XEN_PASSWORD, else first line of stdin")
+    p.add_argument("--password-id", help="Checkmk password store reference <id>:<file> "
+                   "(used by the server side call, keeps the secret out of argv)")
+    p.add_argument("--port", type=int, default=443)
+    p.add_argument("--timeout", type=int, default=20)
+    p.add_argument("--no-cert-check", action="store_true")
+    p.add_argument("--ca-file")
+    p.add_argument("--hostname", default="", help="Checkmk host name of the queried host")
+    p.add_argument("--pool-members", default="",
+                   help="comma separated failover addresses if ADDRESS is unreachable")
+    p.add_argument("--host-naming", choices=("name_label", "hostname"), default="name_label")
+    p.add_argument("--vm-naming", choices=("name_label", "uuid"), default="name_label")
+    p.add_argument("--alerts-hours", type=int, default=24)
+    p.add_argument("--no-vms", action="store_true")
+    p.add_argument("--no-rrd", action="store_true")
+    p.add_argument("--scheme", choices=("https", "http"), default="https", help=argparse.SUPPRESS)
+    p.add_argument("--debug", action="store_true")
+    args = p.parse_args(argv)
+    args.pool_members = [a.strip() for a in args.pool_members.split(",") if a.strip()]
+    if args.password_id:
+        args.password = lookup_password_store(args.password_id)
+    if args.password is None:
+        args.password = os.environ.get("XEN_PASSWORD")
+    if args.password is None:
+        args.password = sys.stdin.readline().rstrip("\r\n")
+    return args
+
+
+def main(argv=None):
+    args = parse_arguments(sys.argv[1:] if argv is None else argv)
+    try:
+        data = collect(args)
+    except Exception as exc:  # pylint: disable=broad-except
+        if args.debug:
+            raise
+        msg = str(exc).replace(args.password, "***") if args.password else str(exc)
+        sys.stderr.write("agent_xenserver: %s\n" % msg)
+        return 2
+    sys.stdout.write("\n".join(build_output(args, data)) + "\n")
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

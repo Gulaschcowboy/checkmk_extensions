@@ -1,0 +1,42 @@
+{'author': 'Alex Wilms',
+ 'description': 'Citrix XenServer and XCP-ng monitoring via the XAPI '
+                'management API - pool members and HA, alerts, storage '
+                'repositories (capacity, I/O, attach state, multipath), and '
+                'per hypervisor host and per VM as piggyback data: CPU, '
+                'memory, interfaces, disks, license, updates, certificates, '
+                'power state, snapshots and guest tools. Read-only, no agent '
+                'on the hypervisors needed.',
+ 'download_url': 'https://github.com/Gulaschcowboy/checkmk_extensions',
+ 'files': {'cmk_addons_plugins': ['xenserver/libexec/agent_xenserver',
+                                  'xenserver/lib/xenserver.py',
+                                  'xenserver/agent_based/xenserver_host.py',
+                                  'xenserver/agent_based/xenserver_pool.py',
+                                  'xenserver/agent_based/xenserver_vm.py',
+                                  'xenserver/rulesets/xenserver.py',
+                                  'xenserver/rulesets/xenserver_params.py',
+                                  'xenserver/server_side_calls/xenserver.py',
+                                  'xenserver/graphing/xenserver.py',
+                                  'xenserver/checkman/xenserver_alerts',
+                                  'xenserver/checkman/xenserver_cert',
+                                  'xenserver/checkman/xenserver_host',
+                                  'xenserver/checkman/xenserver_host_cpu',
+                                  'xenserver/checkman/xenserver_host_if',
+                                  'xenserver/checkman/xenserver_host_mem',
+                                  'xenserver/checkman/xenserver_license',
+                                  'xenserver/checkman/xenserver_pool',
+                                  'xenserver/checkman/xenserver_sr',
+                                  'xenserver/checkman/xenserver_sr_io',
+                                  'xenserver/checkman/xenserver_updates',
+                                  'xenserver/checkman/xenserver_vm',
+                                  'xenserver/checkman/xenserver_vm_cpu',
+                                  'xenserver/checkman/xenserver_vm_disk',
+                                  'xenserver/checkman/xenserver_vm_if',
+                                  'xenserver/checkman/xenserver_vm_mem',
+                                  'xenserver/checkman/xenserver_vm_snapshots',
+                                  'xenserver/checkman/xenserver_vm_tools']},
+ 'name': 'xenserver',
+ 'title': 'Citrix XenServer / XCP-ng (XAPI)',
+ 'version': '1.0.0',
+ 'version.min_required': '2.3.0b1',
+ 'version.packaged': 'hermes',
+ 'version.usable_until': None}

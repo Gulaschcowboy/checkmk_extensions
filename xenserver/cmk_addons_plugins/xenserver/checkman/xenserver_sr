@@ -1,0 +1,21 @@
+title: XenServer / XCP-ng: Storage repository capacity
+agents: xenserver
+catalog: app/citrix
+license: GPLv2
+distribution: check_mk
+
+description:
+ This check monitors the capacity of a storage repository (SR) using the
+ common filesystem logic (levels, trends, magic factor; ruleset
+ "Filesystems (used space and growth)"). Shared SRs are reported on the pool
+ host, local SRs in the piggyback data of their XenServer host. Data comes
+ from the special agent {agent_xenserver}.
+
+ In addition the check goes {CRIT} if the SR is not attached (PBD unplugged)
+ on a host, and {WARN}/{CRIT} if multipath paths are degraded/down. The
+ provisioned (allocated) size is shown for thin provisioned SRs.
+
+ ISO, udev (removable media) and memory SRs are not monitored.
+
+discovery:
+ One service per storage repository with a size larger than zero.

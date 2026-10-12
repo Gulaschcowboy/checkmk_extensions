@@ -1,0 +1,13 @@
+title: XenServer / XCP-ng: VM memory
+agents: xenserver
+catalog: app/citrix
+license: GPLv2
+distribution: check_mk
+
+description:
+ This check shows the memory assigned to a running VM and, if the guest tools
+ report it, the memory used inside the guest. Levels on the in-guest usage
+ can be configured. Data comes from the special agent {agent_xenserver}.
+
+discovery:
+ One service {XenServer VM Memory} per VM.

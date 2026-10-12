@@ -1,0 +1,17 @@
+title: XenServer / XCP-ng: Alerts
+agents: xenserver
+catalog: app/citrix
+license: GPLv2
+distribution: check_mk
+
+description:
+ This check evaluates the XAPI messages (alerts shown in XenCenter / Xen
+ Orchestra) of the configured time window (default 24 hours), fetched by the
+ special agent {agent_xenserver}.
+
+ Priority 1 and 2 alerts are {CRIT}, priority 3 {WARN}, priority 4 (service
+ recovered) {OK} by default. Informational messages (priority 5) are only
+ counted. Single alerts can be ignored via regular expressions.
+
+discovery:
+ One service {XenServer Alerts} is created if alert fetching is enabled.

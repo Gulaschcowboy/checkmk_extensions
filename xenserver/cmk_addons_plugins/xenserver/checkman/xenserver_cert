@@ -1,0 +1,14 @@
+title: XenServer / XCP-ng: Certificates
+agents: xenserver
+catalog: app/citrix
+license: GPLv2
+distribution: check_mk
+
+description:
+ This check monitors the expiry of the TLS certificates known to XAPI (host
+ certificate, internal host certificate, CA certificates). Default levels are
+ 30/14 days remaining, {CRIT} when expired. Data comes from the special agent
+ {agent_xenserver}.
+
+discovery:
+ One service per certificate with an expiry date. The item is the certificate type and name.

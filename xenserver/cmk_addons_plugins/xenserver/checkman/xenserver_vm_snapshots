@@ -1,0 +1,13 @@
+title: XenServer / XCP-ng: VM snapshots
+agents: xenserver
+catalog: app/citrix
+license: GPLv2
+distribution: check_mk
+
+description:
+ This check monitors the snapshots of a VM: number (optional levels) and age
+ of the oldest snapshot (default levels 7/30 days). A configured snapshot
+ schedule (VMSS) is shown. Data comes from the special agent {agent_xenserver}.
+
+discovery:
+ One service {XenServer VM Snapshots} per VM.

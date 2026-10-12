@@ -1,0 +1,18 @@
+title: XenServer / XCP-ng: Pool
+agents: xenserver
+catalog: app/citrix
+license: GPLv2
+distribution: check_mk
+
+description:
+ This check monitors a XenServer or XCP-ng pool via the XAPI management API.
+ Data is collected by the special agent {agent_xenserver}.
+
+ The service shows the pool coordinator and all pool members. It goes {CRIT}
+ if a host is not live, {WARN} (configurable) if a host is disabled
+ (maintenance mode), if no performance data (RRD) could be read from a host,
+ if HA is overcommitted, or if the configured address was not reachable and
+ a failover address had to be used. The number of running VMs is graphed.
+
+discovery:
+ One service {XenServer Pool} is created on the host the special agent is configured for.

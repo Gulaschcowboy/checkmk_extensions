@@ -1,0 +1,14 @@
+title: XenServer / XCP-ng: License
+agents: xenserver
+catalog: app/citrix
+license: GPLv2
+distribution: check_mk
+
+description:
+ This check shows the license edition of a XenServer host and monitors the
+ remaining time until the license expires (default levels 30/14 days, {CRIT}
+ when expired). Hosts without expiry (e.g. XCP-ng) are {OK}. Data comes from
+ the special agent {agent_xenserver}.
+
+discovery:
+ One service {XenServer License} per host.

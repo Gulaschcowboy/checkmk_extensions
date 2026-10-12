@@ -1,0 +1,14 @@
+title: XenServer / XCP-ng: VM guest tools
+agents: xenserver
+catalog: app/citrix
+license: GPLv2
+distribution: check_mk
+
+description:
+ This check monitors whether the guest tools of a running VM report to XAPI.
+ It goes {WARN} (configurable) if no guest metrics are available or the PV
+ drivers are not detected. The guest tools version is shown. Data comes from
+ the special agent {agent_xenserver}.
+
+discovery:
+ One service {XenServer VM Guest Tools} per VM.

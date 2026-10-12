@@ -1,0 +1,13 @@
+title: XenServer / XCP-ng: VM disk
+agents: xenserver
+catalog: app/citrix
+license: GPLv2
+distribution: check_mk
+
+description:
+ This check shows throughput, IOPS and latency of a virtual disk (VBD) of a
+ VM, together with the VDI name, SR and size. Optional levels on latency.
+ Data comes from the special agent {agent_xenserver}.
+
+discovery:
+ One service per virtual disk (CD drives are skipped). The item is the device name, e.g. xvda.

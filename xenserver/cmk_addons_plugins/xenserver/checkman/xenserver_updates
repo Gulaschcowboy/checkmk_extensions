@@ -1,0 +1,16 @@
+title: XenServer / XCP-ng: Updates
+agents: xenserver
+catalog: app/citrix
+license: GPLv2
+distribution: check_mk
+
+description:
+ This check monitors the update state of a XenServer 8 host: {WARN}
+ (configurable) if the latest synchronized updates are not applied, if
+ pending guidances (e.g. RebootHost, RestartToolstack) exist or updates
+ require a reboot, and if the last update synchronization is older than the
+ configured age (default 8/15 days). Data comes from the special agent
+ {agent_xenserver}.
+
+discovery:
+ One service {XenServer Updates} per host that reports update information (XenServer 8).

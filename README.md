@@ -32,6 +32,7 @@ instance were performed by experienced Users. Use at your own risk.
 | [`zfs_arc`](zfs_arc/) | ZFS ARC cache usage (agent-based + Agent-Bakery): monitors ARC size vs. `zfs_arc_max` and RAM, and hit ratio, with independently configurable warn/crit levels, an unconditional throttle-event warning, a heuristic tuning suggestion and graphing. |
 | [`hermes_dashboard`](hermes_dashboard/) | [Hermes Agent](https://hermes-agent.nousresearch.com/) web dashboard monitoring via its REST API (`GET /api/status`) — overall status, gateway process state, per-platform connection status (Telegram/Discord/Slack/...), per-component health (gateway/dashboard/storage/platforms), active sessions, and pending updates. |
 | [`unbound`](unbound/) | Unbound checks und statistics (agent-based + bakery): monitors the unbound caching/validating DNS resolver via agent plugin — answer rates by rcode, cache hit ratio/miss rate and unwanted reply rate. Agent plugin with bakery rule for Linux; needs manual deployment on *BSD, e.g. OPNsense. |
+| [`xenserver`](xenserver/) | Citrix XenServer and XCP-ng monitoring via the XAPI management API (read-only special agent, no agent on the hypervisors) — pool members and HA, alerts, storage repositories (capacity, I/O, attach state, multipath), plus piggyback data per hypervisor host (CPU, memory, interfaces, license, updates, certificates) and per VM (power state, CPU, memory, disks, NICs, snapshots, guest tools). |
 
 ## Installing a package
 

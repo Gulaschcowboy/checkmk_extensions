@@ -1,0 +1,14 @@
+title: XenServer / XCP-ng: Host memory
+agents: xenserver
+catalog: app/citrix
+license: GPLv2
+distribution: check_mk
+
+description:
+ This check shows the memory usage of a XenServer host (memory assigned to
+ VMs and the hypervisor) and the memory still free for new VMs. No levels are
+ set by default because a well utilized host is normal. Data comes from the
+ special agent {agent_xenserver}.
+
+discovery:
+ One service {XenServer Host Memory} per host.

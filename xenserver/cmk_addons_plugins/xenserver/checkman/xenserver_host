@@ -1,0 +1,17 @@
+title: XenServer / XCP-ng: Host
+agents: xenserver
+catalog: app/citrix
+license: GPLv2
+distribution: check_mk
+
+description:
+ This check monitors a XenServer / XCP-ng host (piggyback data of the special
+ agent {agent_xenserver}): product version, pool role, live and enabled state, uptime,
+ number of running VMs, clock offset to the Checkmk server (default levels
+ 30/60 seconds) and power consumption if reported.
+
+ It goes {CRIT} if the host is not live and {WARN} (configurable) if the host
+ is disabled (maintenance mode) or no performance data is available.
+
+discovery:
+ One service {XenServer Host} per XenServer host.

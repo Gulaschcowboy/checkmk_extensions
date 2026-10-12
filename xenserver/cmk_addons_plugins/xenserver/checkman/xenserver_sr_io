@@ -1,0 +1,14 @@
+title: XenServer / XCP-ng: Storage repository I/O
+agents: xenserver
+catalog: app/citrix
+license: GPLv2
+distribution: check_mk
+
+description:
+ This check shows throughput, IOPS, latency and queue length of a storage
+ repository as measured by the XenServer host (RRD data sources with the SR
+ UUID suffix). Data comes from the special agent {agent_xenserver}.
+ Optional levels on read/write latency can be configured.
+
+discovery:
+ One service per storage repository for which I/O data is available.
