@@ -21,6 +21,11 @@ via REST-API", for the background analysis and validation log.
 
 Only read-only endpoints are queried; nothing under /admin/init,
 /admin/remove, /system/setConfig etc. is ever called.
+
+Always exits 0 (even on login/HTTP failure): a non-zero exit would make
+Checkmk discard this program's entire stdout, so the linotp_rest_source
+section's "ok": false/"error" fields -- and with them the "LinOTP Source"
+CRIT the checkman page promises -- would never reach the check plugin.
 """
 
 from __future__ import annotations
@@ -52,15 +57,48 @@ def _hide_process_title() -> None:
         pass
 
 
+def lookup_password_store(raw: str) -> str:
+    """Resolve a Checkmk password store reference "<id>:<file>".
+
+    Only needed when run by the Checkmk core; tries the public API first
+    (2.5: cmk.password_store.v1, 2.4: v1_unstable) and falls back to the
+    internal helper of older versions."""
+    for mod in ("cmk.password_store.v1", "cmk.password_store.v1_unstable"):
+        try:
+            return __import__(mod, fromlist=["dereference_secret"]).dereference_secret(raw).reveal()
+        except (ImportError, AttributeError):
+            continue
+    from pathlib import Path
+
+    from cmk.utils import password_store  # pylint: disable=import-outside-toplevel
+
+    pw_id, pw_file = raw.split(":", 1)
+    return password_store.lookup(Path(pw_file), pw_id)
+
+
 def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Checkmk special agent for LinOTP (JSONRPC API)")
     parser.add_argument("--version", action="version", version=VERSION)
     parser.add_argument("--url", required=True, help="Base URL of the LinOTP instance, e.g. https://linotp.example.com")
     parser.add_argument("--user", required=True, help="LinOTP admin user (a read-only admin account is sufficient)")
-    parser.add_argument("--password", required=True, help="Password for --user")
+    parser.add_argument(
+        "--password",
+        help="Password for --user. Avoid: visible in the process list; prefer --password-id "
+        "(used automatically by the server side call via the Checkmk password store).",
+    )
+    parser.add_argument(
+        "--password-id",
+        help="Checkmk password store reference <id>:<file> (used by the server side call, "
+        "keeps the secret out of argv)",
+    )
     parser.add_argument("--no-cert-check", action="store_true", help="Disable TLS certificate verification")
     parser.add_argument("--timeout", type=int, default=15, help="Per-request timeout in seconds (default 15)")
-    return parser.parse_args(argv)
+    args = parser.parse_args(argv)
+    if args.password_id:
+        args.password = lookup_password_store(args.password_id)
+    if not args.password:
+        parser.error("one of --password or --password-id is required")
+    return args
 
 
 def _ssl_context(no_cert_check: bool) -> ssl.SSLContext:
@@ -312,7 +350,12 @@ def main(argv: list[str] | None = None) -> int:
 
     if not primary_ok:
         sys.stderr.write(f"linotp_rest: {primary_error}\n")
-        return 1
+    # Always exit 0: a non-zero exit makes Checkmk discard this program's
+    # entire stdout and treat the whole data source as failed, so the
+    # linotp_rest_source section above (and the "LinOTP Source" CRIT it is
+    # meant to produce) would never even reach the check function. Letting
+    # that check plugin report the failure based on the "ok"/"error" fields
+    # is the only way the checkman-promised CRIT actually shows up.
     return 0
 
 

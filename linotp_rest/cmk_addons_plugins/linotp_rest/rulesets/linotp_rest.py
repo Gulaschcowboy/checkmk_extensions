@@ -58,8 +58,12 @@ def _formspec():
                 parameter_form=BooleanChoice(
                     title=Title("Disable TLS certificate verification"),
                     label=Label("SSL certificate validation is disabled"),
-                    help_text=Help("Enable this if LinOTP uses a self-signed certificate."),
-                    prefill=DefaultValue(True),
+                    help_text=Help(
+                        "Enable this only if LinOTP uses a self-signed certificate. This "
+                        "agent sends admin credentials, so TLS verification is on by "
+                        "default."
+                    ),
+                    prefill=DefaultValue(False),
                 ),
             ),
             "timeout": DictElement(
