@@ -4,6 +4,9 @@ Checkmk special agent that monitors a LinOTP two-factor authentication
 server entirely over HTTPS, using LinOTP's own JSONRPC admin/monitoring API
 -- no agent installation on the LinOTP server itself needed.
 
+<img width="1338" height="289" alt="grafik" src="https://github.com/user-attachments/assets/f1e7d5d3-107b-47c5-9d03-a8b51eaaf64b" />
+
+
 ## What it does
 
 The agent logs in against `/admin/login` (JWT cookie auth) with a LinOTP
