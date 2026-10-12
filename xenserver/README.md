@@ -8,6 +8,13 @@ the hypervisors, the agent works strictly read-only and only uses the Python
 standard library. The feature set is modelled after Checkmk's built-in
 VMware ESXi and Proxmox VE integrations.
 
+XenServer Hosts:
+<img width="1719" height="773" alt="grafik" src="https://github.com/user-attachments/assets/b5e18a6f-26ae-4b60-b22c-f8d42735b7c9" />
+
+Xen VMs piggyback:
+<img width="2157" height="295" alt="grafik" src="https://github.com/user-attachments/assets/720edb1a-4e2a-4469-a23a-56493fd3681f" />
+
+
 It is not meant as a replacement for a Checkmk agent in dom0, but as an
 addition. All services are prefixed with `XenServer` so they do not collide
 with services of a dom0 agent.
@@ -58,13 +65,11 @@ mkp enable xenserver 1.0.0
 
 Then in Checkmk:
 
-1. Create a host for the pool, with the IP address of the pool coordinator.
-2. Add the rule **Setup > Agents > VM, cloud, container > XenServer / XCP-ng via XAPI**
-   for this host.
-3. Enter user and password (the password store is supported; the password is
-   never put on the command line).
-4. Run service discovery and activate changes.
-5. Create the piggyback hosts for the XenServer hosts and VMs (by hand or
+1. Add the rule **Setup > Agents > VM, cloud, container > XenServer / XCP-ng via XAPI**
+   for all XenServer hosts.
+2. Enter user and password (the password store is supported)
+3. Run service discovery and activate changes.
+4. Create the piggyback hosts for the XenServer hosts and VMs (by hand or
    automatically with a *Dynamic host management* connection), named as
    shown in XenCenter (see naming options below).
 
