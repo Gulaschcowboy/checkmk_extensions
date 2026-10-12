@@ -1,0 +1,21 @@
+title: LinOTP Source
+agents: linotp_rest
+catalog: app/other
+license: GPLv2
+distribution:
+description:
+ This service reports the health of the LinOTP REST special agent run
+ itself (login, /monitoring/tokens query). It is created on the host
+ running the special agent, alongside the per-realm/per-resolver services.
+
+ Goes CRIT when the agent run failed (login error, HTTP error, timeout,
+ unreachable instance) with the underlying error message as the service
+ output. Goes OK when the run succeeded, reporting the number of realms
+ found and the query duration.
+
+item:
+ None. One "LinOTP Source" service is created per configured host.
+
+discovery:
+ One "LinOTP Source" service is discovered on the host running the
+ special agent.

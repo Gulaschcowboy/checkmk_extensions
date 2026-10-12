@@ -1,0 +1,23 @@
+title: LinOTP License
+agents: linotp_rest
+catalog: app/other
+license: GPLv2
+distribution:
+description:
+ Reports LinOTP's license/support status, combining /monitoring/license
+ (licensed/active/remaining token counts) and /system/isSupportValid
+ (support validity and, when in grace mode, LinOTP's own grace-limit
+ message, e.g. "Grace limit reached: N active tokens found >= M tokens
+ licensed").
+
+ Goes CRIT when the support/license is reported invalid, WARN when LinOTP
+ reports a grace-limit condition (license limit reached or exceeded but
+ still operating in grace mode), otherwise OK. Token counts are reported
+ as performance data for trending towards the license limit.
+
+item:
+ None. One "LinOTP License" service is created per configured host.
+
+discovery:
+ One "LinOTP License" service is discovered on the host running the
+ special agent.

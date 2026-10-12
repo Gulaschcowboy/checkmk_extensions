@@ -1,0 +1,23 @@
+title: LinOTP Tokens %s
+agents: linotp_rest
+catalog: app/other
+license: GPLv2
+distribution:
+description:
+ Reports token counts for one LinOTP realm (/monitoring/tokens), as a
+ service directly on the host running the LinOTP REST special agent:
+ total tokens and total users with at least one token assigned, both
+ also exported as performance data for trending.
+
+ Goes CRIT/WARN only if upper/lower levels configured via the "LinOTP
+ token counts" ruleset are breached (none are set by default, e.g. to
+ get an early warning before a license limit is reached, or to notice an
+ unexpected bulk revocation) or if the underlying data could not be
+ read; otherwise OK.
+
+item:
+ The realm name, e.g. "corp.example.com".
+
+discovery:
+ One "LinOTP Tokens <realm>" service per realm reported by the LinOTP
+ REST special agent.

@@ -1,0 +1,22 @@
+title: LinOTP Config Sync
+agents: linotp_rest
+catalog: app/other
+license: GPLv2
+distribution:
+description:
+ Reports LinOTP's configuration sync status across cluster nodes
+ (/monitoring/config) plus realm/resolver/policy counts as performance
+ data.
+
+ On a single-node installation "in sync" is trivially true; this check is
+ most useful on multi-node/HA setups, where a desync indicates a
+ configuration replication problem. The state used when not in sync
+ defaults to WARN and is configurable via the "LinOTP config sync status"
+ ruleset.
+
+item:
+ None. One "LinOTP Config Sync" service is created per configured host.
+
+discovery:
+ One "LinOTP Config Sync" service is discovered on the host running the
+ special agent.

@@ -1,0 +1,26 @@
+title: LinOTP Resolver %s
+agents: linotp_rest
+catalog: app/other
+license: GPLv2
+distribution:
+description:
+ Reports the number of configured and recently-active users LinOTP sees
+ for one resolver (LDAP/SQL/file user backend) of one realm, combining
+ /monitoring/userinfo (configured users) and /monitoring/activeUsers
+ (recently authenticated users). Created directly on the host running the
+ LinOTP REST special agent.
+
+ A resolver suddenly reporting fewer configured users than expected
+ (default: WARN below 1, i.e. an empty resolver) usually means its
+ backend became unreachable or misconfigured -- this check is LinOTP's
+ closest equivalent to a user-backend availability check. Thresholds are
+ configurable via the "LinOTP resolver user counts" ruleset. Upper
+ levels (e.g. to catch an unexpected bulk import of users) are also
+ configurable there but disabled by default.
+
+item:
+ "<realm> / <resolver>", e.g. "corp.example.com / Portaluser".
+
+discovery:
+ One "LinOTP Resolver <realm> / <resolver>" service per resolver
+ reported by the LinOTP REST special agent.

@@ -1,0 +1,20 @@
+title: LinOTP Storage Encryption
+agents: linotp_rest
+catalog: app/other
+license: GPLv2
+distribution:
+description:
+ Reports whether LinOTP's storage encryption (protection of token secrets
+ and sensitive config values, via /monitoring/storageEncryption) is
+ active.
+
+ Goes CRIT when encryption is reported inactive or the endpoint could not
+ be queried, otherwise OK with the configured crypto module name/type.
+
+item:
+ None. One "LinOTP Storage Encryption" service is created per configured
+ host.
+
+discovery:
+ One "LinOTP Storage Encryption" service is discovered on the host
+ running the special agent.

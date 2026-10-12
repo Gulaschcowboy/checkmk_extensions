@@ -1,0 +1,320 @@
+#!/usr/bin/env python3
+# SPDX-License-Identifier: GPL-2.0-only
+"""Checkmk special agent for LinOTP via its JSONRPC admin/monitoring API.
+
+Authenticates against LinOTP's ``/admin/login`` (JWT cookie auth, no CSRF
+token required for read-only requests since LinOTP 3.2) and polls the
+``/monitoring/*`` and ``/system/*`` endpoints to produce:
+
+All sections are emitted on the host this special agent runs on (no
+piggyback hosts): ``linotp_rest_source`` (own run health),
+``linotp_rest_license``, ``linotp_rest_storage_encryption``,
+``linotp_rest_config``, ``linotp_rest_tokens`` (token counts per realm)
+and ``linotp_rest_resolvers`` (per-resolver user counts, both configured
+and recently-active, per realm). The per-realm/per-resolver checks use
+the realm (and resolver) name as the Checkmk service item.
+
+Endpoint choice and real-world JSON field names were validated against a
+production LinOTP 3.2.6 instance before this agent was written; see
+mkp-development/notes/IDEAS.md, section "Checkmk Special Agent für LinOTP
+via REST-API", for the background analysis and validation log.
+
+Only read-only endpoints are queried; nothing under /admin/init,
+/admin/remove, /system/setConfig etc. is ever called.
+"""
+
+from __future__ import annotations
+
+import argparse
+import json
+import ssl
+import sys
+from datetime import datetime, timezone
+from http.cookiejar import CookieJar
+from typing import Any
+from urllib.error import HTTPError, URLError
+from urllib.parse import urlencode
+from urllib.request import HTTPCookieProcessor, HTTPSHandler, Request, build_opener
+
+VERSION = "0.1.0"
+
+
+class AgentError(RuntimeError):
+    pass
+
+
+def _hide_process_title() -> None:
+    try:
+        import setproctitle  # type: ignore
+
+        setproctitle.setproctitle("agent_linotp_rest")
+    except Exception:
+        pass
+
+
+def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
+    parser = argparse.ArgumentParser(description="Checkmk special agent for LinOTP (JSONRPC API)")
+    parser.add_argument("--version", action="version", version=VERSION)
+    parser.add_argument("--url", required=True, help="Base URL of the LinOTP instance, e.g. https://linotp.example.com")
+    parser.add_argument("--user", required=True, help="LinOTP admin user (a read-only admin account is sufficient)")
+    parser.add_argument("--password", required=True, help="Password for --user")
+    parser.add_argument("--no-cert-check", action="store_true", help="Disable TLS certificate verification")
+    parser.add_argument("--timeout", type=int, default=15, help="Per-request timeout in seconds (default 15)")
+    return parser.parse_args(argv)
+
+
+def _ssl_context(no_cert_check: bool) -> ssl.SSLContext:
+    ctx = ssl.create_default_context()
+    if no_cert_check:
+        ctx.check_hostname = False
+        ctx.verify_mode = ssl.CERT_NONE
+    return ctx
+
+
+class LinotpClient:
+    def __init__(self, base_url: str, ctx: ssl.SSLContext, timeout: int) -> None:
+        self.base = base_url.rstrip("/")
+        self.timeout = timeout
+        self.cookiejar = CookieJar()
+        self.opener = build_opener(HTTPCookieProcessor(self.cookiejar), HTTPSHandler(context=ctx))
+
+    def _request(self, method: str, path: str, data: bytes | None = None) -> tuple[int, Any]:
+        url = f"{self.base}{path}"
+        req = Request(url, data=data, method=method)
+        req.add_header("Accept", "application/json")
+        if data is not None:
+            req.add_header("Content-Type", "application/x-www-form-urlencoded")
+        try:
+            with self.opener.open(req, timeout=self.timeout) as resp:
+                raw = resp.read().decode("utf-8", "replace")
+                status = resp.status
+        except HTTPError as exc:
+            raw = exc.read().decode("utf-8", "replace")
+            status = exc.code
+        except URLError as exc:
+            raise AgentError(f"Connection to {self.base} failed: {exc.reason}") from exc
+        if not raw:
+            return status, None
+        try:
+            return status, json.loads(raw)
+        except ValueError as exc:
+            raise AgentError(f"Invalid JSON response from {path}: {exc}") from exc
+
+    def login(self, user: str, password: str) -> None:
+        body = urlencode({"username": user, "password": password}).encode("ascii")
+        status, payload = self._request("POST", "/admin/login", data=body)
+        if status != 200:
+            raise AgentError(f"Login failed: HTTP {status}: {payload}")
+        cookie_names = {c.name for c in self.cookiejar}
+        if "access_token_cookie" not in cookie_names:
+            raise AgentError(f"Login did not yield access_token_cookie (cookies seen: {sorted(cookie_names)})")
+
+    def jsonrpc_value(self, path: str) -> Any:
+        """GET a LinOTP JSONRPC endpoint and return result.value, raising on failure."""
+        status, payload = self._request("GET", path)
+        if status != 200:
+            raise AgentError(f"HTTP {status} on {path}")
+        if not isinstance(payload, dict):
+            raise AgentError(f"Non-JSON-object response from {path}")
+        result = payload.get("result")
+        if not isinstance(result, dict) or not result.get("status"):
+            raise AgentError(f"result.status not true from {path}: {payload}")
+        return result.get("value"), payload.get("detail")
+
+
+def fetch_optional(client: LinotpClient, path: str) -> tuple[Any, Any, str | None]:
+    """Best-effort fetch: returns (value, detail, error) -- never raises."""
+    try:
+        value, detail = client.jsonrpc_value(path)
+        return value, detail, None
+    except AgentError as exc:
+        return None, None, str(exc)
+
+
+def print_section(name: str, payload: dict[str, Any]) -> None:
+    print(f"<<<{name}:sep(0)>>>")
+    print(json.dumps(payload, ensure_ascii=False, separators=(",", ":")))
+
+
+def build_license_payload(license_value: Any, license_error: str | None, support_value: Any, support_detail: Any, support_error: str | None) -> dict[str, Any]:
+    ok = license_error is None or support_error is None
+    payload: dict[str, Any] = {"ok": ok}
+    if license_error and support_error:
+        payload["error"] = f"license: {license_error}; support: {support_error}"
+        return payload
+    if isinstance(license_value, dict):
+        payload["token_num"] = license_value.get("token-num")
+        payload["token_active"] = license_value.get("token-active")
+        payload["token_left"] = license_value.get("token-left")
+    elif license_error:
+        payload["license_error"] = license_error
+    if isinstance(support_value, bool):
+        payload["support_valid"] = support_value
+    elif support_error:
+        payload["support_error"] = support_error
+    grace_reason = None
+    if isinstance(support_detail, dict):
+        grace_reason = support_detail.get("reason")
+    payload["grace_reason"] = grace_reason
+    return payload
+
+
+def build_storage_encryption_payload(value: Any, error: str | None) -> dict[str, Any]:
+    if error:
+        return {"ok": False, "error": error}
+    if not isinstance(value, dict):
+        return {"ok": False, "error": "unexpected storageEncryption response shape"}
+    return {
+        "ok": True,
+        "encryption": bool(value.get("encryption")),
+        "cryptmodul_type": value.get("cryptmodul_type"),
+        "cryptmodul_name": value.get("cryptmodul_name"),
+    }
+
+
+def build_config_payload(value: Any, error: str | None) -> dict[str, Any]:
+    if error:
+        return {"ok": False, "error": error}
+    if not isinstance(value, dict):
+        return {"ok": False, "error": "unexpected config response shape"}
+    payload = {"ok": True}
+    for key in ("sync", "realms", "policies", "ldapresolver", "sqlresolver", "passwdresolver", "total", "netto"):
+        if key in value:
+            payload[key] = value[key]
+    return payload
+
+
+def realm_names(tokens_value: Any, realms_value: Any) -> list[str]:
+    names: list[str] = []
+    if isinstance(realms_value, dict):
+        names = list(realms_value.keys())
+    elif isinstance(tokens_value, dict) and isinstance(tokens_value.get("Realms"), dict):
+        names = list(tokens_value["Realms"].keys())
+    return names
+
+
+def build_tokens_payload(realms: list[str], tokens_value: Any, tokens_error: str | None) -> dict[str, Any]:
+    if tokens_error:
+        return {"ok": False, "error": tokens_error}
+    realms_data = tokens_value.get("Realms") if isinstance(tokens_value, dict) else None
+    per_realm: dict[str, Any] = {}
+    for realm in realms:
+        entry = realms_data.get(realm) if isinstance(realms_data, dict) else None
+        if isinstance(entry, dict):
+            per_realm[realm] = {"total": entry.get("total"), "total_users": entry.get("total users")}
+    return {"ok": True, "realms": per_realm}
+
+
+def build_resolvers_payload(
+    realms: list[str],
+    active_users_value: Any,
+    active_users_error: str | None,
+    userinfo_value: Any,
+    userinfo_error: str | None,
+) -> dict[str, Any]:
+    if active_users_error and userinfo_error:
+        return {"ok": False, "error": f"activeUsers: {active_users_error}; userinfo: {userinfo_error}"}
+
+    active_realms = active_users_value.get("Realms") if isinstance(active_users_value, dict) else None
+    total_realms = userinfo_value.get("Realms") if isinstance(userinfo_value, dict) else None
+
+    per_realm: dict[str, Any] = {}
+    for realm in realms:
+        active_for_realm = active_realms.get(realm) if isinstance(active_realms, dict) else None
+        total_for_realm = total_realms.get(realm) if isinstance(total_realms, dict) else None
+
+        resolver_names = set()
+        if isinstance(active_for_realm, dict):
+            resolver_names.update(active_for_realm.keys())
+        if isinstance(total_for_realm, dict):
+            resolver_names.update(total_for_realm.keys())
+
+        resolvers = {}
+        for name in sorted(resolver_names):
+            resolvers[name] = {
+                "total_users": (total_for_realm or {}).get(name),
+                "active_users": (active_for_realm or {}).get(name),
+            }
+        per_realm[realm] = resolvers
+    return {"ok": True, "realms": per_realm}
+
+
+def main(argv: list[str] | None = None) -> int:
+    args = parse_args(argv)
+    _hide_process_title()
+    started = datetime.now(timezone.utc)
+    ctx = _ssl_context(args.no_cert_check)
+    client = LinotpClient(args.url, ctx, args.timeout)
+
+    primary_ok = True
+    primary_error: str | None = None
+    tokens_value = None
+    tokens_error: str | None = None
+
+    try:
+        client.login(args.user, args.password)
+    except AgentError as exc:
+        primary_ok = False
+        primary_error = str(exc)
+
+    if primary_ok:
+        # /monitoring/tokens is the mandatory endpoint this agent exists for:
+        # if it fails, the whole run is a failure (see exit code below), even
+        # though the secondary endpoints queried next are best-effort.
+        tokens_value, _tok_detail, tokens_error = fetch_optional(client, "/monitoring/tokens")
+        if tokens_error:
+            primary_ok = False
+            primary_error = tokens_error
+
+    active_users_value = userinfo_value = storage_value = license_value = config_value = realms_value = None
+    active_users_error = userinfo_error = storage_error = license_error = config_error = None
+    support_value = support_detail = None
+    support_error: str | None = None
+
+    if primary_ok:
+        active_users_value, _d, active_users_error = fetch_optional(client, "/monitoring/activeUsers")
+        userinfo_value, _d, userinfo_error = fetch_optional(client, "/monitoring/userinfo")
+        storage_value, _d, storage_error = fetch_optional(client, "/monitoring/storageEncryption")
+        license_value, _d, license_error = fetch_optional(client, "/monitoring/license")
+        config_value, _d, config_error = fetch_optional(client, "/monitoring/config")
+        realms_value, _d, _realms_error = fetch_optional(client, "/system/getRealms")
+        support_value, support_detail, support_error = fetch_optional(client, "/system/isSupportValid")
+
+    duration = (datetime.now(timezone.utc) - started).total_seconds()
+
+    realms = realm_names(tokens_value, realms_value) if primary_ok else []
+
+    if primary_ok:
+        print_section("linotp_rest_tokens", build_tokens_payload(realms, tokens_value, tokens_error))
+        print_section(
+            "linotp_rest_resolvers",
+            build_resolvers_payload(realms, active_users_value, active_users_error, userinfo_value, userinfo_error),
+        )
+        print_section(
+            "linotp_rest_license",
+            build_license_payload(license_value, license_error, support_value, support_detail, support_error),
+        )
+        print_section("linotp_rest_storage_encryption", build_storage_encryption_payload(storage_value, storage_error))
+        print_section("linotp_rest_config", build_config_payload(config_value, config_error))
+
+    print_section(
+        "linotp_rest_source",
+        {
+            "ok": primary_ok,
+            "version": VERSION,
+            "url": args.url,
+            "error": primary_error,
+            "realms": len(realms),
+            "duration_seconds": round(duration, 3),
+            "timestamp": datetime.now(timezone.utc).isoformat(),
+        },
+    )
+
+    if not primary_ok:
+        sys.stderr.write(f"linotp_rest: {primary_error}\n")
+        return 1
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())
