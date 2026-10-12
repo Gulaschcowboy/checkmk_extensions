@@ -1,19 +1,9 @@
 {'author': 'Alex Wilms',
- 'description': 'Special agent for LinOTP two-factor authentication servers, '
-                'via LinOTP\'s own JSONRPC admin/monitoring API '
-                '(/monitoring/*, /system/*). Authenticates with a (read-only) '
-                'LinOTP admin user/password and polls token counts, '
-                'per-resolver user counts, storage encryption status, config '
-                'sync status, and license/support status. Creates one '
-                '"LinOTP Tokens <realm>" and "LinOTP Resolver <realm> / '
-                '<resolver>" service per realm/resolver directly on the '
-                'queried host (no piggyback hosts), plus "LinOTP Source" '
-                '(own run health), "LinOTP License", "LinOTP Storage '
-                'Encryption" and "LinOTP Config Sync" services. Upper/lower '
-                'levels are configurable for token counts and resolver user '
-                'counts (off by default).\n'
-                'Endpoint choice and JSON field names were validated against '
-                'a production LinOTP 3.2.6 instance before implementation.',
+ 'description': "LinOTP two-factor authentication server monitoring via its "
+                "API - token counts and per-resolver user counts per realm "
+                "with configurable levels, storage encryption, config sync, "
+                "and license & support status including LinOTP's "
+                "grace-limit message.",
  'download_url': 'https://github.com/Gulaschcowboy/checkmk_extensions',
  'files': {'cmk_addons_plugins': ['linotp_rest/agent_based/linotp_rest_config.py',
                                   'linotp_rest/agent_based/linotp_rest_license.py',
