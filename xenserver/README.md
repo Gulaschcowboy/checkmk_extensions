@@ -14,10 +14,6 @@ with services of a dom0 agent.
 
 ## What it monitors
 
-One Checkmk host (the pool) runs the special agent against the pool
-coordinator. Pool-wide services stay on that host; every XenServer host and
-every VM gets its own piggyback data.
-
 | Service | Where | Description |
 |---|---|---|
 | `XenServer Pool` | pool host | Coordinator and members, live / enabled (maintenance mode) state, missing performance data, HA overcommitment, failover to another member |
