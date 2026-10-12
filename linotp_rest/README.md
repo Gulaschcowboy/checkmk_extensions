@@ -52,9 +52,7 @@ Only read-only endpoints are ever called; nothing under `/admin/init`,
 
 ## Requirements
 
-- LinOTP with the monitoring controller enabled (validated against LinOTP
-  3.2.6; the `/monitoring/*` endpoints have been part of LinOTP for
-  several major versions).
+- LinOTP with the "monitoring controller" enabled.
 - A LinOTP admin account; a read-only admin role is sufficient for
   monitoring.
 - Network access from the Checkmk server to LinOTP over HTTPS.
@@ -62,12 +60,8 @@ Only read-only endpoints are ever called; nothing under `/admin/init`,
 ## Configuration
 
 Setup -> Agents -> Other integrations -> "LinOTP (via REST API)". Assign
-the rule to a host representing the LinOTP instance. The password can be
+the rule to a host(s) representing the LinOTP instance(s). The password can be
 stored in the Checkmk password store.
-
-If your LinOTP has many realms, each realm contributes its own
-"LinOTP Tokens" and "LinOTP Resolver" service(s) to this single host's
-service list.
 
 ## Changelog
 
@@ -79,6 +73,5 @@ service list.
 
 ## Verified against
 
-- Checkmk 3.0.0 (daily build), `cmk_addons_plugins` layout.
-- A production LinOTP 3.2.6 instance (all eight queried endpoints
-  returned usable JSON).
+- Checkmk 2.5.0 and 3.0.0 (daily build), `cmk_addons_plugins` layout.
+- A production LinOTP 3.2.6 instance
