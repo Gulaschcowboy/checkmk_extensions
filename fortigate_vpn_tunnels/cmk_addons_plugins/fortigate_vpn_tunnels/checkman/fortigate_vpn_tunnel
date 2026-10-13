@@ -1,0 +1,29 @@
+title: Fortinet FortiGate: IPsec VPN tunnel (per tunnel)
+agents: snmp
+catalog: hw/network/fortinet
+license: GPLv2
+distribution: fortigate_vpn_tunnels-mkp
+description:
+ Monitors every IPsec VPN tunnel (phase 2 selector) of a Fortinet FortiGate
+ as its own service, based on the FORTINET-FORTIGATE-MIB table
+ fgVpnTunTable. Checkmk's built-in check "fortigate_ipsecvpn" only creates
+ a single summary service for all tunnels; both can be used side by side.
+
+ The service is OK if the tunnel is up and CRIT if it is down. The state for
+ a down tunnel can be changed via the rule "FortiGate IPsec VPN tunnel
+ (per tunnel)", e.g. restricted to on-demand tunnels.
+
+ The summary shows the phase 1 name (if it differs from the phase 2 name),
+ the remote gateway and the local and remote selectors. The details show
+ VDOM, local gateway, SA lifetime and expiry, and the traffic counters.
+ FortiOS reports the traffic counters per phase 1, so all selectors of the
+ same phase 1 show the same values.
+
+item:
+ The phase 2 name. If the same phase 2 name exists in several VDOMs, the
+ VDOM name is appended, e.g. "vpn_branch (VDOM customer1)".
+
+discovery:
+ One service is created for each phase 2 selector. Via the rule
+ "FortiGate IPsec VPN tunnel discovery" only tunnels that are up at
+ discovery time can be discovered.

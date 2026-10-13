@@ -1,0 +1,16 @@
+{'author': 'Alex Wilms',
+ 'description': 'Monitors every IPsec VPN tunnel (phase 2 selector) of a Fortinet '
+                'FortiGate as its own SNMP service, instead of only the summary '
+                'service of the built-in check: up/down state (configurable per '
+                'tunnel), remote gateway, selectors, SA lifetime and phase 1 '
+                'traffic.',
+ 'download_url': 'https://github.com/Gulaschcowboy/checkmk_extensions',
+ 'files': {'cmk_addons_plugins': ['fortigate_vpn_tunnels/agent_based/fortigate_vpn_tunnels.py',
+                                   'fortigate_vpn_tunnels/checkman/fortigate_vpn_tunnel',
+                                   'fortigate_vpn_tunnels/rulesets/fortigate_vpn_tunnels.py']},
+ 'name': 'fortigate_vpn_tunnels',
+ 'title': 'FortiGate IPsec VPN tunnels (one service per tunnel)',
+ 'version': '1.0.0',
+ 'version.min_required': '2.3.0p1',
+ 'version.packaged': 'hermes',
+ 'version.usable_until': None}
