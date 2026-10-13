@@ -2,14 +2,11 @@
 
 ## What it monitors
 
-Checkmk SNMP plug-in that creates **one service per IPsec VPN tunnel**
-(phase 2 selector) on Fortinet FortiGate firewalls.
+Checkmk's buildin Fortigate plug-in creates only one summary service for all IPSEC VPN Tunnels.
+This extension creates **one service per IPsec VPN tunnel**(phase 2 selector)
+on Fortinet FortiGate firewalls.
 
-Checkmk's built-in check `fortigate_ipsecvpn` only creates a single summary
-service ("VPN IPSec Tunnels Total: 22, Up: 9, Down: 13 ..."), so you have to
-open the details to see which tunnel is down, and you can't have per-tunnel
-history, downtimes or notifications. This plug-in fills that gap. Both checks
-read the same SNMP table and can be used side by side.
+<img width="1451" height="304" alt="grafik" src="https://github.com/user-attachments/assets/c66d37c9-9756-4c3f-b4c0-52ac33de62ee" />
 
 Per service (`VPN IPSec Tunnel <phase 2 name>`):
 
@@ -27,8 +24,7 @@ the item.
 ## Requirements
 
 - Checkmk 2.3.0p1 or newer.
-- FortiGate monitored via SNMP (the same setup the built-in FortiGate checks
-  use). Data source: `FORTINET-FORTIGATE-MIB::fgVpnTunTable`.
+- FortiGate monitored via SNMP
 
 ## Installation
 
