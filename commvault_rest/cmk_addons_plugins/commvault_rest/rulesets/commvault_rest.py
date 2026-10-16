@@ -28,9 +28,7 @@ def _formspec():
             "the last backup job per subclient, active jobs with their runtime and "
             "wait reason, storage pool status and capacity, and the VM protection "
             "status, the MediaAgent status and the license (expiry and usage). "
-            "One piggyback host per protected VM is created. "
-            "SQL transaction log jobs are evaluated in the service of their subclient, "
-            "separately from the data backups."
+            "One piggyback service per protected VM is created."
         ),
         elements={
             "url": DictElement(
