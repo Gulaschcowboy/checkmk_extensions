@@ -31,16 +31,15 @@ subclient (aux copy, DDB, data aging) are ignored.
 
 ### Piggyback
 
-The special agent delivers piggyback data for one host per VM; the host name
+The special agent delivers piggyback data for one service per VM; the host name
 is the VM name (characters other than letters, digits, dot, dash and
-underscore replaced by `_`). The data is only used if such a host exists in
-Checkmk, or if you configure the Dynamic host management (DCD) to create the
-hosts. Use "Hostname translation for piggybacked hosts" if your host names
+underscore replaced by `_`).
+Use "Hostname translation for piggybacked hosts" if your host names
 differ from the VM names.
 
 ## Requirements
 
-- Checkmk 2.3.0 or later (tested with Checkmk 3.0.0)
+- Checkmk 2.3.0 or later (tested with Checkmk 3.0.0-daily)
 - Commvault CommServe with REST API, tested with 11 SP44
 - A Commvault user with read access to the queried entities
 
@@ -53,7 +52,7 @@ mkp enable commvault_rest 0.9.0
 
 ## Configuration
 
-1. Create a host for the CommServe (no Checkmk agent needed).
+1. Create a host for the CommServe
 2. **Setup > Agents > Other integrations > Commvault (via REST API)**:
    - API base URL, e.g. `https://commserve.example.com/commandcenter/api`
      (no trailing slash)
