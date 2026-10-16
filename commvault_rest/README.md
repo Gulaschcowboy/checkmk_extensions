@@ -7,6 +7,10 @@ Special agent for a Commvault CommServe, using its REST API (Command Center API)
 > rules may have to be re-created.
 
 ## What it monitors
+<img width="1932" height="865" alt="grafik" src="https://github.com/user-attachments/assets/3a2b7897-9179-42e1-8efe-b74dcbff192c" />
+
+<img width="2182" height="77" alt="grafik" src="https://github.com/user-attachments/assets/8f9c3420-c019-4c45-94f1-c6aad42751aa" />
+
 
 | Service | Content |
 |---------|---------|
