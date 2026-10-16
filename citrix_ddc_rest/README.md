@@ -59,4 +59,9 @@ Setup -> Agents -> Other integrations -> "Citrix Virtual Apps and Desktops
 Controller (or set the DDC address explicitly if it differs from the host's
 IP address). The password can be stored in the Checkmk password store.
 
+## Changelog
+
+- **1.0.1** — Always emit the `Controller` and `HostingServer` lines in `citrix_state` (empty when unknown, like `citrix_farm.ps1`). Fixes a `KeyError: 'controller'` crash of the built-in "Citrix Controller" / "Citrix Hosting Server" checks for powered-off or unregistered machines.
+- **1.0.0** — Initial release.
+
 Verified against Checkmk 2.5 and 3.0.0-2026.10.07.

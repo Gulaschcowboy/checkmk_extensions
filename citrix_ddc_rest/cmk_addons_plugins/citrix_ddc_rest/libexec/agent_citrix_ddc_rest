@@ -53,7 +53,7 @@ from typing import Any
 from urllib.error import HTTPError, URLError
 from urllib.request import Request, urlopen
 
-VERSION = "1.0.0"
+VERSION = "1.0.1"
 
 
 class AgentError(RuntimeError):
@@ -275,18 +275,22 @@ def emit_state_section(machine: dict[str, Any]) -> list[str]:
     catalog = (machine.get("MachineCatalog") or {}).get("Name")
     if catalog:
         lines.append(f"Catalog {catalog}")
-    controller = machine.get("ControllerDnsName")
-    if controller:
-        lines.append(f"Controller {controller}")
+    # Always emit Controller and HostingServer (empty when unknown), exactly
+    # like citrix_farm.ps1: the built-in citrix_state_controller /
+    # citrix_state_hosting_server checks index section["controller"] /
+    # section["hosting_server"] unconditionally and crash with KeyError if
+    # the line is missing (e.g. powered-off / unregistered machines have no
+    # ControllerDnsName). An empty value renders as "Machine powered off".
+    controller = machine.get("ControllerDnsName") or ""
+    lines.append(f"Controller {controller}".rstrip())
     desktop_group = (machine.get("DeliveryGroup") or {}).get("Name")
     if desktop_group:
         lines.append(f"DesktopGroupName {desktop_group}")
     fault_state = machine.get("FaultState")
     if fault_state:
         lines.append(f"FaultState {fault_state}")
-    hosting_server = hosting.get("HostingServerName")
-    if hosting_server:
-        lines.append(f"HostingServer {hosting_server}")
+    hosting_server = hosting.get("HostingServerName") or ""
+    lines.append(f"HostingServer {hosting_server}".rstrip())
     maintenance = _bool_str(machine.get("InMaintenanceMode"))
     if maintenance is not None:
         lines.append(f"MaintenanceMode {maintenance}")
