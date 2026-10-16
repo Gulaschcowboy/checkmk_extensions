@@ -10,8 +10,9 @@ description:
  group become UNKNOWN. Also WARN if the job list was truncated by the page
  limit. The agent run time is recorded as a metric.
 
- SQL transaction log jobs are currently skipped and only counted (see the
- service details).
+ The service details show how many jobs were fetched, how many SQL
+ transaction log jobs were found and which jobs were skipped (VM child jobs,
+ restores, jobs without subclient, optionally Distributed Data Platforms).
 
 discovery:
  One service on the host running the Commvault REST special agent.

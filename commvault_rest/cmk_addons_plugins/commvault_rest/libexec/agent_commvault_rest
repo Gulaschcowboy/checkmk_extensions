@@ -21,8 +21,11 @@ Sections on the CommServe host:
 Piggyback per VM (name sanitised, duplicates merged):
   commvault_rest_vm
 
-SQL transaction log jobs are skipped (only counted) until their handling is
-decided.
+SQL transaction log jobs are kept separately per subclient ("tlog_items") and
+evaluated in the same subclient service, so the hourly log jobs do not push the
+data backups out of the per-subclient job list. Jobs of the agent type
+"Distributed Data Platforms" (internal Index Server backups) can be skipped with
+--skip-ddp.
 """
 
 from __future__ import annotations
@@ -39,9 +42,10 @@ from urllib.error import HTTPError, URLError
 from urllib.parse import urlencode
 from urllib.request import HTTPSHandler, Request, build_opener
 
-VERSION = "0.1.0-b6"
+VERSION = "0.1.0-b7"
 MAX_JOB_PAGES = 100
 TLOG_LEVEL = "transaction log"
+DDP_APP = "distributed data platforms"
 DEFAULT_INSTANCE = {"defaultinstancename"}
 # VSA backups: one parent job per subclient (client = hypervisor pseudo client) plus one
 # child job per VM whose subclient.clientName is the VM and whose instance is "VMInstance".
@@ -81,6 +85,8 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     p.add_argument("--timeout", type=int, default=60, help="Per-request timeout in seconds")
     p.add_argument("--job-lookback", type=int, default=7 * 86400, help="Job lookback in seconds")
     p.add_argument("--page-size", type=int, default=5000, help="Jobs per POST /Jobs page")
+    p.add_argument("--skip-ddp", action="store_true",
+                   help="Skip jobs of the agent type 'Distributed Data Platforms' (Index Server backups)")
     p.add_argument("--no-jobs", action="store_true")
     p.add_argument("--no-vms", action="store_true")
     p.add_argument("--no-vm-piggyback", action="store_true")
@@ -195,6 +201,11 @@ def is_vsa_child(summary: dict) -> bool:
     return bool(parent) and parent != _int(summary.get("jobId"))
 
 
+def is_ddp(summary: dict) -> bool:
+    sc = summary.get("subclient") or {}
+    return DDP_APP in (_s(sc.get("appName")).strip().lower(), _s(summary.get("appTypeName")).strip().lower())
+
+
 def compact_job(s: dict) -> dict:
     sc = s.get("subclient") or {}
     return {
@@ -243,7 +254,7 @@ def collect_commserv(c: Client) -> dict:
     }
 
 
-def collect_jobs(c: Client, lookback: int, page_size: int) -> tuple[dict, dict]:
+def collect_jobs(c: Client, lookback: int, page_size: int, skip_ddp: bool = False) -> tuple[dict, dict]:
     """POST /Jobs, newest first, paged until totalRecordsWithoutPaging is reached."""
     jobs: list[dict] = []
     offset = 0
@@ -270,9 +281,11 @@ def collect_jobs(c: Client, lookback: int, page_size: int) -> tuple[dict, dict]:
     truncated = total is not None and offset < total
 
     items: dict[str, list[dict]] = {}
+    tlog_items: dict[str, list[dict]] = {}
     stats = {"total": len(jobs), "total_reported": total, "pages": pages, "truncated": truncated,
              "lookback": lookback, "page_size": page_size,
-             "tlog_skipped": 0, "no_subclient": 0, "restore_skipped": 0, "vsa_child_skipped": 0}
+             "tlog": 0, "tlog_no_subclient": 0, "ddp_skipped": 0, "skip_ddp": skip_ddp,
+             "no_subclient": 0, "restore_skipped": 0, "vsa_child_skipped": 0}
     seen: set = set()
     for s in jobs:
         jid = s.get("jobId")
@@ -282,8 +295,16 @@ def collect_jobs(c: Client, lookback: int, page_size: int) -> tuple[dict, dict]:
         if "restore" in _s(s.get("jobType")).lower():
             stats["restore_skipped"] += 1
             continue
+        if skip_ddp and is_ddp(s):
+            stats["ddp_skipped"] += 1
+            continue
         if _s(s.get("backupLevelName")).strip().lower() == TLOG_LEVEL:
-            stats["tlog_skipped"] += 1
+            item = job_item(s)
+            if not item:
+                stats["tlog_no_subclient"] += 1
+                continue
+            stats["tlog"] += 1
+            tlog_items.setdefault(item, []).append(compact_job(s))
             continue
         if is_vsa_child(s):
             stats["vsa_child_skipped"] += 1
@@ -293,10 +314,10 @@ def collect_jobs(c: Client, lookback: int, page_size: int) -> tuple[dict, dict]:
             stats["no_subclient"] += 1
             continue
         items.setdefault(item, []).append(compact_job(s))
-    for lst in items.values():
+    for lst in list(items.values()) + list(tlog_items.values()):
         lst.sort(key=lambda j: j["id"] or 0, reverse=True)
         del lst[10:]
-    return {"lookback": lookback, "items": items, "stats": stats}, stats
+    return {"lookback": lookback, "items": items, "tlog_items": tlog_items, "stats": stats}, stats
 
 
 def collect_active_jobs(c: Client) -> list[dict]:
@@ -507,7 +528,8 @@ def main(argv: list[str] | None = None) -> int:
         source["commserv"] = run_group("commserv", collect_commserv, errors, client)
 
         if not args.no_jobs:
-            res = run_group("jobs", collect_jobs, errors, client, args.job_lookback, args.page_size)
+            res = run_group("jobs", collect_jobs, errors, client, args.job_lookback, args.page_size,
+                            args.skip_ddp)
             if res:
                 jobs, source["jobs"] = res
                 section("commvault_rest_jobs", {"data": jobs})

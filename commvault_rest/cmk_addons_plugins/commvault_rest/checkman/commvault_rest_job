@@ -12,8 +12,19 @@ description:
  and runtime. Optionally the age of the last successful job can be checked.
 
  If no job ran within the lookback period the service goes WARN
- (configurable). SQL transaction log jobs are not evaluated yet. Restore jobs
- and jobs without subclient (aux copy, DDB, data aging) are ignored.
+ (configurable). Restore jobs and jobs without subclient (aux copy, DDB, data
+ aging) are ignored.
+
+ SQL transaction log jobs are evaluated in the same service but separately
+ from the data backups (full, incremental, differential), so the hourly log
+ jobs neither hide a failed data backup nor count as a successful one. For the
+ log jobs the status of the last finished log job (same state mapping) and the
+ age of the last successful log job (default WARN 6 h, CRIT 12 h) are checked.
+ A subclient with log jobs but without any data backup within the lookback
+ period gets the state for "no job".
+
+ Jobs of the agent type "Distributed Data Platforms" (Index Server backups)
+ can be excluded in the special agent rule.
 
 item:
  "<client> / <agent> [/ <instance>] [/ <backup set>] / <subclient>"; default instance and default backup set are omitted.

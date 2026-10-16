@@ -20,6 +20,7 @@ class CommvaultRestParams(BaseModel):
     timeout: int = 60
     job_lookback: float = 7 * 86400.0
     page_size: int = 5000
+    skip_ddp: bool = False
     sections: list[str] = ["jobs", "storage", "vms", "vm_piggyback", "mediaagents", "license"]
 
 
@@ -33,6 +34,8 @@ def _commands(params: CommvaultRestParams, host_config: HostConfig) -> Iterable[
     ]
     if params.no_cert_check:
         args.append("--no-cert-check")
+    if params.skip_ddp:
+        args.append("--skip-ddp")
     for name, flag in (("jobs", "--no-jobs"), ("storage", "--no-storage"), ("vms", "--no-vms"),
                        ("vm_piggyback", "--no-vm-piggyback"), ("mediaagents", "--no-mediaagents"),
                        ("license", "--no-license")):

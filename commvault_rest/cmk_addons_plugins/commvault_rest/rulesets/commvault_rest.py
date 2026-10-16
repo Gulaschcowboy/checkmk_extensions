@@ -29,7 +29,8 @@ def _formspec():
             "wait reason, storage pool status and capacity, and the VM protection "
             "status, the MediaAgent status and the license (expiry and usage). "
             "One piggyback host per protected VM is created. "
-            "SQL transaction log jobs are not evaluated yet."
+            "SQL transaction log jobs are evaluated in the service of their subclient, "
+            "separately from the data backups."
         ),
         elements={
             "url": DictElement(
@@ -114,6 +115,21 @@ def _formspec():
                         MultipleChoiceElement(name="license", title=Title("License (expiry and usage)")),
                     ],
                     prefill=DefaultValue(["jobs", "storage", "vms", "vm_piggyback", "mediaagents", "license"]),
+                ),
+            ),
+            "skip_ddp": DictElement(
+                required=False,
+                parameter_form=BooleanChoice(
+                    title=Title("Ignore 'Distributed Data Platforms' jobs"),
+                    label=Label("Create no job services for Distributed Data Platforms (Index Server Backup)"),
+                    help_text=Help(
+                        "Index Server backups are internal Commvault jobs (agent type 'Distributed Data "
+                        "Platforms', usually one subclient per plan). When enabled, these jobs create no "
+                        "job services; already discovered services vanish and can be removed by a "
+                        "service discovery. The skipped jobs are counted in the service "
+                        "'Commvault CommServe'. Active jobs are still shown in 'Commvault active jobs'."
+                    ),
+                    prefill=DefaultValue(False),
                 ),
             ),
         },

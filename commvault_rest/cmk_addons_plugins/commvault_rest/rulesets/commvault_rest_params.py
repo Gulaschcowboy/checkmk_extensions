@@ -67,7 +67,23 @@ def _job_form():
             "max_age_success": _age_levels(
                 "Maximum age of the last successful job",
                 "Only jobs within the lookback period of the special agent are known; "
-                "older successful jobs are reported as 'no successful job'.",
+                "older successful jobs are reported as 'no successful job'. "
+                "SQL transaction log jobs are not counted here, see the next option.",
+            ),
+            "max_age_log_success": DictElement(
+                required=False,
+                parameter_form=SimpleLevels(
+                    title=Title("Maximum age of the last successful SQL transaction log job"),
+                    help_text=Help(
+                        "Only for subclients with SQL transaction log backups. The log jobs are "
+                        "evaluated separately from the data backups (full, incremental, differential) "
+                        "in the same service: state of the last log job and age of the last successful "
+                        "one. The job states above apply to both. Default: 6 h / 12 h."
+                    ),
+                    level_direction=LevelDirection.UPPER,
+                    form_spec_template=TimeSpan(displayed_magnitudes=_MAGNITUDES),
+                    prefill_fixed_levels=DefaultValue((6 * 3600.0, 12 * 3600.0)),
+                ),
             ),
         }
     )

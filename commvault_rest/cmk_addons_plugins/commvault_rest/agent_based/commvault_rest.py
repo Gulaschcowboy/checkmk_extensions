@@ -86,6 +86,18 @@ def _page_size_text(jobs: dict) -> str:
     return f", page size {jobs['page_size']}" if jobs.get("page_size") else ""
 
 
+def _tlog_text(jobs: dict) -> str:
+    if "tlog" in jobs:  # since b7: evaluated in the subclient services
+        return f"{jobs.get('tlog')} (in the subclient services)"
+    return f"{jobs.get('tlog_skipped')} skipped (agent older than 0.1.0-b7)"
+
+
+def _ddp_text(jobs: dict) -> str:
+    if jobs.get("skip_ddp"):
+        return f"{jobs.get('ddp_skipped', 0)} Distributed Data Platforms (rule), "
+    return ""
+
+
 def _age(ts: int, now: float) -> float:
     return max(now - ts, 0.0)
 
@@ -130,7 +142,8 @@ def check_source(section) -> CheckResult:
             state=State.OK,
             notice=(f"Jobs in lookback{_lookback_text(jobs)}: {jobs.get('total')} "
                     f"(reported {jobs.get('total_reported')}, {jobs.get('pages')} page(s)"
-                    f"{_page_size_text(jobs)}); skipped: {jobs.get('tlog_skipped')} SQL transaction log, "
+                    f"{_page_size_text(jobs)}); SQL transaction log: {_tlog_text(jobs)}; "
+                    f"skipped: {_ddp_text(jobs)}"
                     f"{jobs.get('vsa_child_skipped', 0)} VM child jobs (see VM services), "
                     f"{jobs.get('restore_skipped')} restore, {jobs.get('no_subclient')} without subclient "
                     f"(aux copy, DDB, workflows, ...)"),
@@ -162,6 +175,7 @@ JOB_STATE_DEFAULTS = {
     "state_other": 1,
     "state_no_job": 1,
     "state_no_success": 1,
+    "max_age_log_success": ("fixed", (6 * 3600.0, 12 * 3600.0)),
 }
 
 
@@ -192,23 +206,14 @@ def _job_label(job: dict) -> str:
 
 def discover_jobs(section) -> DiscoveryResult:
     if isinstance(section, dict) and isinstance(section.get("data"), dict):
-        for item in section["data"].get("items") or {}:
+        data = section["data"]
+        for item in set(data.get("items") or {}) | set(data.get("tlog_items") or {}):
             yield Service(item=item)
 
 
-def check_jobs(item: str, params, section) -> CheckResult:
-    if (err := _error(section)) is not None:
-        yield err
-        return
-    data = section.get("data") or {}
-    jobs = (data.get("items") or {}).get(item)
-    lookback = int(data.get("lookback") or 0)
-    if not jobs:
-        yield Result(state=State(params.get("state_no_job", 1)),
-                     summary=f"No job within the lookback period ({render.timespan(lookback)})")
-        return
-
-    now = time.time()
+def _check_job_list(jobs: list[dict], params, now: float, lookback: int, *, what: str, levels_key: str,
+                    metric: str, success_label: str, running_in_summary: bool) -> CheckResult:
+    """Last finished job, active jobs, age of the last successful job and history of one job list."""
     finished = [j for j in jobs if j.get("end")]
     running = [j for j in jobs if not j.get("end")]
 
@@ -217,37 +222,69 @@ def check_jobs(item: str, params, section) -> CheckResult:
         state = State(params.get(job_status_key(last.get("status", "")), 1))
         yield Result(
             state=state,
-            summary=(f"Last {_job_label(last)}: {last.get('status') or 'unknown'}, ended "
+            summary=(f"Last {what}{_job_label(last)}: {last.get('status') or 'unknown'}, ended "
                      f"{render.datetime(last['end'])} ({render.timespan(_age(last['end'], now))} ago)"),
         )
         if last.get("pending"):
             yield Result(state=State.OK, notice=f"Reason: {_oneline(last['pending'], 500)}")
-        yield Result(state=State.OK, notice=f"Last job run time: {render.timespan(last.get('elapsed') or 0)}")
+        yield Result(state=State.OK, notice=f"Last {what}job run time: {render.timespan(last.get('elapsed') or 0)}")
     else:
-        yield Result(state=State.OK, summary="No finished job within the lookback period yet")
+        yield Result(state=State.OK, summary=f"No finished {what}job within the lookback period yet")
 
     for job in running:
         pct = f", {job['percent']}%" if job.get("percent") is not None else ""
         pending = f", {_oneline(job['pending'])}" if job.get("pending") else ""
-        yield Result(state=State.OK, summary=(f"Active {_job_label(job)}: {job.get('status')}{pct}, running for "
-                                              f"{render.timespan(job.get('elapsed') or 0)}{pending}"))
+        text = (f"Active {what}{_job_label(job)}: {job.get('status')}{pct}, running for "
+                f"{render.timespan(job.get('elapsed') or 0)}{pending}")
+        yield Result(state=State.OK, summary=text) if running_in_summary else Result(state=State.OK, notice=text)
 
     success = next((j for j in finished if _is_success(j.get("status", ""))), None)
     if success:
         yield from check_levels(
             _age(success["end"], now),
-            levels_upper=_levels(params, "max_age_success"),
-            metric_name="commvault_rest_backup_age",
+            levels_upper=_levels(params, levels_key),
+            metric_name=metric,
             render_func=render.timespan,
-            label="Last successful job",
+            label=success_label,
         )
     elif finished:
         yield Result(state=State(params.get("state_no_success", 1)),
-                     summary=f"No successful job within the lookback period ({render.timespan(lookback)})")
+                     summary=f"No successful {what}job within the lookback period ({render.timespan(lookback)})")
 
     history = ", ".join(f"{j.get('id')}: {j.get('status')}" for j in finished[:10])
     if history:
-        yield Result(state=State.OK, notice=f"Recent jobs: {history}")
+        yield Result(state=State.OK, notice=f"Recent {what}jobs: {history}")
+
+
+def check_jobs(item: str, params, section) -> CheckResult:
+    if (err := _error(section)) is not None:
+        yield err
+        return
+    data = section.get("data") or {}
+    jobs = (data.get("items") or {}).get(item) or []
+    tlog_jobs = (data.get("tlog_items") or {}).get(item) or []
+    lookback = int(data.get("lookback") or 0)
+    if not jobs and not tlog_jobs:
+        yield Result(state=State(params.get("state_no_job", 1)),
+                     summary=f"No job within the lookback period ({render.timespan(lookback)})")
+        return
+
+    now = time.time()
+    if jobs:
+        yield from _check_job_list(jobs, params, now, lookback, what="", levels_key="max_age_success",
+                                   metric="commvault_rest_backup_age", success_label="Last successful job",
+                                   running_in_summary=True)
+    else:
+        yield Result(state=State(params.get("state_no_job", 1)),
+                     summary=(f"No data backup job (only transaction log jobs) within the lookback period "
+                              f"({render.timespan(lookback)})"))
+
+    if tlog_jobs:
+        # SQL transaction log backups run about hourly; evaluated separately so they do not
+        # hide the state and age of the data backups above.
+        yield from _check_job_list(tlog_jobs, params, now, lookback, what="log backup ",
+                                   levels_key="max_age_log_success", metric="commvault_rest_log_backup_age",
+                                   success_label="Last successful log backup", running_in_summary=False)
 
 
 check_plugin_commvault_rest_job = CheckPlugin(
