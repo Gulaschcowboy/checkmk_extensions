@@ -1,0 +1,18 @@
+title: Commvault License %s
+agents: commvault_rest
+catalog: app/other
+license: GPLv2
+distribution:
+description:
+ Checks the usage of one license type from GET /CommServ/LicenseUsage:
+ used amount in percent of the licensed amount (default WARN 90 %, CRIT
+ 95 %) and the expired flag (CRIT). The unit is defined by Commvault per
+ license type and not reported by the API. The evaluation flag is only shown,
+ not evaluated (it is set on several types of productive CommCells).
+
+item:
+ The license type name; "(capacity)" or "(usage)" is appended if the same
+ name exists in both licensing models.
+
+discovery:
+ One service per license type with a licensed or used amount.

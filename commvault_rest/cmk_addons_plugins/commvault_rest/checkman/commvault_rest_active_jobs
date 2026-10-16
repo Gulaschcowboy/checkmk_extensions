@@ -1,0 +1,15 @@
+title: Commvault Active Jobs
+agents: commvault_rest
+catalog: app/other
+license: GPLv2
+distribution:
+description:
+ Lists all currently active jobs (running, waiting, pending, ...) with
+ type, progress and wait reason, and checks their runtime against upper levels
+ (default 24 h / 72 h, ruleset "Commvault active jobs"). The ruleset can set
+ own levels (or no levels) per job type; the type is matched case-insensitively
+ against the job type name reported by the API. Every job line shows which
+ limit applied. The number of active and waiting jobs is recorded as metrics.
+
+discovery:
+ One service on the host running the Commvault REST special agent.

@@ -1,0 +1,28 @@
+{'author': 'Alex Wilms',
+ 'description': 'Commvault backup monitoring via the CommServe REST API (special agent): last '
+                'backup job per subclient with configurable job states, active jobs with runtime '
+                'levels and wait reason, storage pool status and capacity (filesystem levels and '
+                'trends), VM summary and one piggyback service per VM with SLA and protection '
+                'status, MediaAgent status, license expiry and usage per license type. Beta: SQL transaction log jobs are not evaluated yet.',
+ 'download_url': 'https://github.com/Gulaschcowboy/checkmk_extensions',
+ 'files': {'cmk_addons_plugins': ['commvault_rest/agent_based/commvault_rest.py',
+                                  'commvault_rest/checkman/commvault_rest_active_jobs',
+                                  'commvault_rest/checkman/commvault_rest_job',
+                                  'commvault_rest/checkman/commvault_rest_license',
+                                  'commvault_rest/checkman/commvault_rest_license_usage',
+                                  'commvault_rest/checkman/commvault_rest_mediaagent',
+                                  'commvault_rest/checkman/commvault_rest_source',
+                                  'commvault_rest/checkman/commvault_rest_storage',
+                                  'commvault_rest/checkman/commvault_rest_vm',
+                                  'commvault_rest/checkman/commvault_rest_vms',
+                                  'commvault_rest/graphing/commvault_rest.py',
+                                  'commvault_rest/libexec/agent_commvault_rest',
+                                  'commvault_rest/rulesets/commvault_rest.py',
+                                  'commvault_rest/rulesets/commvault_rest_params.py',
+                                  'commvault_rest/server_side_calls/commvault_rest.py']},
+ 'name': 'commvault_rest',
+ 'title': 'Commvault (via REST API)',
+ 'version': '0.1.0-b6',
+ 'version.min_required': '2.3.0',
+ 'version.packaged': '2.5.0',
+ 'version.usable_until': None}

@@ -1,0 +1,22 @@
+title: Commvault Job %s
+agents: commvault_rest
+catalog: app/other
+license: GPLv2
+distribution:
+description:
+ Evaluates the backup jobs of one subclient within the lookback period of
+ the special agent (default 7 days). The state is taken from the status of the
+ last finished job (Completed OK, Completed with warnings/errors WARN,
+ Committed WARN, Failed/Killed CRIT, other WARN - all configurable in the
+ ruleset "Commvault jobs per subclient"). Running jobs are shown with progress
+ and runtime. Optionally the age of the last successful job can be checked.
+
+ If no job ran within the lookback period the service goes WARN
+ (configurable). SQL transaction log jobs are not evaluated yet. Restore jobs
+ and jobs without subclient (aux copy, DDB, data aging) are ignored.
+
+item:
+ "<client> / <agent> [/ <instance>] [/ <backup set>] / <subclient>"; default instance and default backup set are omitted.
+
+discovery:
+ One service per subclient that had at least one backup job within the lookback period.

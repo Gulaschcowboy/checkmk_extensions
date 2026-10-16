@@ -1,0 +1,17 @@
+title: Commvault CommServe
+agents: commvault_rest
+catalog: app/other
+license: GPLv2
+distribution:
+description:
+ Shows the result of the Commvault REST special agent run: login, CommServe
+ host name and version, and errors of single API query groups (jobs, storage,
+ VMs). A failed login is CRIT, a failed query group WARN; the services of that
+ group become UNKNOWN. Also WARN if the job list was truncated by the page
+ limit. The agent run time is recorded as a metric.
+
+ SQL transaction log jobs are currently skipped and only counted (see the
+ service details).
+
+discovery:
+ One service on the host running the Commvault REST special agent.

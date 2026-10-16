@@ -1,0 +1,561 @@
+#!/usr/bin/env python3
+# SPDX-License-Identifier: GPL-2.0-only
+"""Checkmk special agent for Commvault (CommServe REST API, 11 SP44 verified).
+
+Logs in with user/password (POST /Login, base64 password, "Authtoken" header),
+queries a few read-only endpoints and logs out again. Every endpoint group is
+fetched in its own try block and written as one JSON section, either
+{"data": ...} or {"error": "..."}, so a failing group turns its services
+UNKNOWN instead of making them vanish. The agent always exits 0: a non-zero
+exit makes Checkmk drop the whole output including the error details.
+
+Sections on the CommServe host:
+  commvault_rest_source       login result, CommServe version, run time, errors
+  commvault_rest_jobs         finished/running jobs per subclient (lookback)
+  commvault_rest_active_jobs  currently active jobs (running/waiting/...)
+  commvault_rest_storage      storage pools: status text and capacity (MB)
+  commvault_rest_vms          VM summary (counts, problem VMs)
+  commvault_rest_mediaagents  MediaAgent status (GET /V4/MediaAgent)
+  commvault_rest_license      license mode and expiry (GET /V4/License, no serial/registration code)
+  commvault_rest_license_usage  license usage per type (GET /CommServ/LicenseUsage)
+Piggyback per VM (name sanitised, duplicates merged):
+  commvault_rest_vm
+
+SQL transaction log jobs are skipped (only counted) until their handling is
+decided.
+"""
+
+from __future__ import annotations
+
+import argparse
+import base64
+import json
+import re
+import ssl
+import sys
+import time
+from typing import Any
+from urllib.error import HTTPError, URLError
+from urllib.parse import urlencode
+from urllib.request import HTTPSHandler, Request, build_opener
+
+VERSION = "0.1.0-b6"
+MAX_JOB_PAGES = 100
+TLOG_LEVEL = "transaction log"
+DEFAULT_INSTANCE = {"defaultinstancename"}
+# VSA backups: one parent job per subclient (client = hypervisor pseudo client) plus one
+# child job per VM whose subclient.clientName is the VM and whose instance is "VMInstance".
+# Children are covered by the per-VM piggyback service and would otherwise create one
+# job service per VM.
+VSA_CHILD_INSTANCE = "vminstance"
+DEFAULT_BACKUPSET = {"defaultbackupset"}
+
+
+class AgentError(RuntimeError):
+    pass
+
+
+def lookup_password_store(raw: str) -> str:
+    """Resolve a Checkmk password store reference "<id>:<file>"."""
+    for mod in ("cmk.password_store.v1", "cmk.password_store.v1_unstable"):
+        try:
+            return __import__(mod, fromlist=["dereference_secret"]).dereference_secret(raw).reveal()
+        except (ImportError, AttributeError):
+            continue
+    from pathlib import Path
+
+    from cmk.utils import password_store  # pylint: disable=import-outside-toplevel
+
+    pw_id, pw_file = raw.split(":", 1)
+    return password_store.lookup(Path(pw_file), pw_id)
+
+
+def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
+    p = argparse.ArgumentParser(description="Checkmk special agent for Commvault (REST API)")
+    p.add_argument("--version", action="version", version=VERSION)
+    p.add_argument("--url", required=True, help="API base URL, e.g. https://cs.example.com/commandcenter/api")
+    p.add_argument("--user", required=True)
+    p.add_argument("--password", help="Avoid (visible in process list); prefer --password-id")
+    p.add_argument("--password-id", help="Checkmk password store reference <id>:<file>")
+    p.add_argument("--no-cert-check", action="store_true")
+    p.add_argument("--timeout", type=int, default=60, help="Per-request timeout in seconds")
+    p.add_argument("--job-lookback", type=int, default=7 * 86400, help="Job lookback in seconds")
+    p.add_argument("--page-size", type=int, default=5000, help="Jobs per POST /Jobs page")
+    p.add_argument("--no-jobs", action="store_true")
+    p.add_argument("--no-vms", action="store_true")
+    p.add_argument("--no-vm-piggyback", action="store_true")
+    p.add_argument("--no-storage", action="store_true")
+    p.add_argument("--no-mediaagents", action="store_true")
+    p.add_argument("--no-license", action="store_true")
+    args = p.parse_args(argv)
+    if args.password_id:
+        args.password = lookup_password_store(args.password_id)
+    if not args.password:
+        p.error("one of --password or --password-id is required")
+    return args
+
+
+class Client:
+    def __init__(self, base_url: str, verify: bool, timeout: int) -> None:
+        self.base = base_url.rstrip("/")
+        self.timeout = timeout
+        ctx = ssl.create_default_context()
+        if not verify:
+            ctx.check_hostname = False
+            ctx.verify_mode = ssl.CERT_NONE
+        self.opener = build_opener(HTTPSHandler(context=ctx))
+        self.token: str | None = None
+
+    def request(self, method: str, path: str, params: dict | None = None, body: Any = None,
+                want_json: bool = True) -> Any:
+        url = self.base + path
+        if params:
+            url += "?" + urlencode(params)
+        headers = {"Accept": "application/json"}
+        data = None
+        if body is not None:
+            data = json.dumps(body).encode("utf-8")
+            headers["Content-Type"] = "application/json"
+        if self.token:
+            headers["Authtoken"] = self.token
+        req = Request(url, data=data, headers=headers, method=method)
+        try:
+            with self.opener.open(req, timeout=self.timeout) as resp:
+                raw = resp.read()
+        except HTTPError as exc:
+            raise AgentError(f"HTTP {exc.code} on {method} {path}") from exc
+        except URLError as exc:
+            raise AgentError(f"Connection to {self.base} failed: {exc.reason}") from exc
+        except (TimeoutError, OSError) as exc:
+            raise AgentError(f"{method} {path}: {exc}") from exc
+        if not want_json:
+            return None
+        try:
+            return json.loads(raw.decode("utf-8", "replace")) if raw else None
+        except ValueError as exc:
+            raise AgentError(f"Invalid JSON from {method} {path}") from exc
+
+    def login(self, user: str, password: str) -> None:
+        body = {"username": user, "password": base64.b64encode(password.encode("utf-8")).decode("ascii")}
+        payload = self.request("POST", "/Login", body=body)
+        token = payload.get("token") if isinstance(payload, dict) else None
+        if not token:
+            msg = ""
+            if isinstance(payload, dict):
+                msg = str(payload.get("errList") or payload.get("errorMessage") or "")[:200]
+            raise AgentError(f"Login failed (no token){': ' + msg if msg else ''}")
+        self.token = token
+
+    def logout(self) -> None:
+        if self.token:
+            try:
+                self.request("POST", "/Logout", want_json=False)
+            except AgentError:
+                pass
+            self.token = None
+
+
+# --------------------------------------------------------------------------- helpers
+
+def _s(value: Any) -> str:
+    return "" if value is None else str(value)
+
+
+def _int(value: Any) -> int | None:
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return None
+
+
+def job_item(summary: dict) -> str | None:
+    sc = summary.get("subclient") or {}
+    client = _s(sc.get("clientName")).strip()
+    if not client:
+        return None
+    parts = [client, _s(sc.get("appName") or summary.get("appTypeName")).strip()]
+    instance = _s(sc.get("instanceName")).strip()
+    if instance and instance.lower() not in DEFAULT_INSTANCE:
+        parts.append(instance)
+    backupset = _s(sc.get("backupsetName")).strip()
+    if backupset and backupset.lower() not in DEFAULT_BACKUPSET:
+        parts.append(backupset)
+    subclient = _s(sc.get("subclientName") or summary.get("subclientName")).strip()
+    if not subclient:  # workflows/approvals carry a client but no subclient
+        return None
+    parts.append(subclient)
+    return " / ".join(p for p in parts if p)
+
+
+def is_vsa_child(summary: dict) -> bool:
+    sc = summary.get("subclient") or {}
+    if _s(sc.get("instanceName")).strip().lower() == VSA_CHILD_INSTANCE:
+        return True
+    parent = _int(summary.get("vsaParentJobID"))
+    return bool(parent) and parent != _int(summary.get("jobId"))
+
+
+def compact_job(s: dict) -> dict:
+    sc = s.get("subclient") or {}
+    return {
+        "id": _int(s.get("jobId")),
+        "status": _s(s.get("status") or s.get("localizedStatus")),
+        "type": _s(s.get("jobType")),
+        "app": _s(s.get("appTypeName")),
+        "level": _s(s.get("backupLevelName")),
+        "start": _int(s.get("jobStartTime")) or 0,
+        "end": _int(s.get("jobEndTime")) or 0,
+        "elapsed": _int(s.get("jobElapsedTime")) or 0,
+        "percent": _int(s.get("percentComplete")),
+        "pending": _s(s.get("pendingReason")).strip()[:300],
+        "client": _s(sc.get("clientName")),
+        "subclient": _s(sc.get("subclientName") or s.get("subclientName")),
+    }
+
+
+def summaries(payload: Any) -> list[dict]:
+    if not isinstance(payload, dict):
+        return []
+    return [j["jobSummary"] for j in payload.get("jobs") or [] if isinstance(j, dict) and isinstance(j.get("jobSummary"), dict)]
+
+
+def clean_text(value: Any, limit: int) -> str:
+    """Free text from the API: drop HTML tags and literal "\\r"/"\\n" escapes, collapse blanks."""
+    text = re.sub(r"<[^>]*>", " ", _s(value))
+    text = text.replace("\\r", " ").replace("\\n", " ")
+    return " ".join(text.split())[:limit]
+
+
+def sanitize_hostname(name: str) -> str:
+    cleaned = re.sub(r"[^A-Za-z0-9._-]+", "_", name.strip()).strip("_.")
+    return cleaned
+
+
+# --------------------------------------------------------------------------- collectors
+
+def collect_commserv(c: Client) -> dict:
+    cs = c.request("GET", "/CommServ") or {}
+    return {
+        "host": _s(cs.get("hostName")),
+        "version": _s(cs.get("csVersionInfo")),
+        "commcell": _s((cs.get("commcell") or {}).get("commCellName")),
+        "timezone": _s((cs.get("csTimeZone") or {}).get("TimeZoneName") or cs.get("timeZone")),
+    }
+
+
+def collect_jobs(c: Client, lookback: int, page_size: int) -> tuple[dict, dict]:
+    """POST /Jobs, newest first, paged until totalRecordsWithoutPaging is reached."""
+    jobs: list[dict] = []
+    offset = 0
+    total = None
+    pages = 0
+    while pages < MAX_JOB_PAGES:
+        body = {
+            "scope": 1,
+            "category": 2,
+            "pagingConfig": {"sortField": "jobId", "sortDirection": "Descending", "offset": offset, "limit": page_size},
+            "jobFilter": {"completedJobLookupTime": lookback, "showAgedJobs": False},
+        }
+        payload = c.request("POST", "/Jobs", body=body)
+        pages += 1
+        if isinstance(payload, dict) and total is None:
+            total = _int(payload.get("totalRecordsWithoutPaging"))
+        page = summaries(payload)
+        if not page:
+            break
+        jobs.extend(page)
+        offset += len(page)
+        if total is not None and offset >= total:
+            break
+    truncated = total is not None and offset < total
+
+    items: dict[str, list[dict]] = {}
+    stats = {"total": len(jobs), "total_reported": total, "pages": pages, "truncated": truncated,
+             "lookback": lookback, "page_size": page_size,
+             "tlog_skipped": 0, "no_subclient": 0, "restore_skipped": 0, "vsa_child_skipped": 0}
+    seen: set = set()
+    for s in jobs:
+        jid = s.get("jobId")
+        if jid in seen:  # paging overlap while new jobs arrive
+            continue
+        seen.add(jid)
+        if "restore" in _s(s.get("jobType")).lower():
+            stats["restore_skipped"] += 1
+            continue
+        if _s(s.get("backupLevelName")).strip().lower() == TLOG_LEVEL:
+            stats["tlog_skipped"] += 1
+            continue
+        if is_vsa_child(s):
+            stats["vsa_child_skipped"] += 1
+            continue
+        item = job_item(s)
+        if not item:
+            stats["no_subclient"] += 1
+            continue
+        items.setdefault(item, []).append(compact_job(s))
+    for lst in items.values():
+        lst.sort(key=lambda j: j["id"] or 0, reverse=True)
+        del lst[10:]
+    return {"lookback": lookback, "items": items, "stats": stats}, stats
+
+
+def collect_active_jobs(c: Client) -> list[dict]:
+    payload = c.request("GET", "/Job", params={"jobCategory": "Active", "limit": 1000})
+    out = []
+    for s in summaries(payload):
+        if is_vsa_child(s):  # the parent job carries runtime and state
+            continue
+        job = compact_job(s)
+        job["item"] = job_item(s) or ""
+        out.append(job)
+    return out
+
+
+def collect_storage(c: Client) -> list[dict]:
+    payload = c.request("GET", "/StoragePool") or {}
+    out = []
+    for p in payload.get("storagePoolList") or []:
+        name = _s((p.get("storagePoolEntity") or {}).get("storagePoolName"))
+        if not name:
+            continue
+        out.append({
+            "name": name,
+            "status": _s(p.get("status")),
+            "pool_type": _int(p.get("storagePoolType")),
+            "storage_type": _int(p.get("storageType")),
+            "archive": bool(p.get("isArchiveStorage")),
+            "capacity_mb": _int(p.get("totalCapacity")) or 0,
+            "free_mb": _int(p.get("totalFreeSpace")) or 0,
+            "usable_free_mb": _int(p.get("totalUsableFreeSpace")) or 0,
+            "size_on_disk_mb": _int(p.get("sizeOnDisk")) or 0,
+        })
+    return out
+
+
+def compact_vm(v: dict) -> dict:
+    lb = v.get("lastBackup") or {}
+    sla = v.get("SLA") or {}
+    return {
+        "name": _s(v.get("name")),
+        "uuid": _s(v.get("UUID")),
+        "status": _s(v.get("status")),
+        "sla": _s(sla.get("status")),
+        "sla_reason": _s(sla.get("reason")),
+        "vm_group": _s((v.get("vmGroup") or {}).get("name")),
+        "plan": _s((v.get("plan") or {}).get("name")),
+        "hypervisor": _s((v.get("hypervisor") or {}).get("name")),
+        "esx_host": _s(v.get("host")),
+        "last_time": _int(lb.get("time")) or 0,
+        "last_status": _s(lb.get("status")),
+        "last_job": _int(lb.get("jobId")),
+        "last_success": _int(lb.get("lastSuccessfullBackupTime")) or 0,
+        "failure": _s(lb.get("failureReason")).strip()[:300],
+    }
+
+
+def _vm_priority(vm: dict) -> tuple:
+    return (vm["sla"] != "EXCLUDED_SLA", vm["last_time"], vm["last_success"])
+
+
+def collect_vms(c: Client) -> tuple[dict, dict[str, dict]]:
+    payload = c.request("GET", "/V4/VirtualMachines") or {}
+    raw = payload.get("virtualMachines") or []
+    retired = 0
+    by_host: dict[str, list[dict]] = {}
+    for v in raw:
+        if not isinstance(v, dict):
+            continue
+        if _s(v.get("status")).upper() == "RETIRED":
+            retired += 1
+            continue
+        vm = compact_vm(v)
+        host = sanitize_hostname(vm["name"])
+        if not host:
+            continue
+        by_host.setdefault(host, []).append(vm)
+
+    merged: dict[str, dict] = {}
+    for host, entries in by_host.items():
+        entries.sort(key=_vm_priority, reverse=True)
+        best = dict(entries[0])
+        best["duplicates"] = [
+            {k: e[k] for k in ("name", "uuid", "status", "sla", "vm_group", "hypervisor", "last_time")}
+            for e in entries[1:]
+        ]
+        merged[host] = best
+
+    by_status: dict[str, int] = {}
+    by_sla: dict[str, int] = {}
+    problems: dict[str, list[str]] = {"MISSED_SLA": [], "FAILED": [], "WARNING": []}
+    for host, vm in sorted(merged.items()):
+        by_status[vm["status"]] = by_status.get(vm["status"], 0) + 1
+        by_sla[vm["sla"]] = by_sla.get(vm["sla"], 0) + 1
+        if vm["sla"] == "MISSED_SLA":
+            problems["MISSED_SLA"].append(vm["name"])
+        if vm["sla"] != "EXCLUDED_SLA" and vm["status"] in ("FAILED", "WARNING"):
+            problems[vm["status"]].append(vm["name"])
+    summary = {
+        "total": len(raw),
+        "retired": retired,
+        "active": sum(len(e) for e in by_host.values()),
+        "hosts": len(merged),
+        "duplicate_names": sum(1 for e in by_host.values() if len(e) > 1),
+        "by_status": by_status,
+        "by_sla": by_sla,
+        "problems": problems,
+    }
+    return summary, merged
+
+
+def collect_mediaagents(c: Client) -> list[dict]:
+    payload = c.request("GET", "/V4/MediaAgent") or {}
+    out = []
+    for m in payload.get("mediaAgents") or []:
+        if not isinstance(m, dict):
+            continue
+        name = _s(m.get("name") or m.get("displayName")).strip()
+        if not name:
+            continue
+        out.append({
+            "name": name,
+            "status": _s(m.get("status")),
+            "offline_reason": clean_text(m.get("offlineReason"), 500),
+            "offline_reason_value": _int(m.get("offlineReasonValue")),
+            "version": _s(m.get("version")),
+            "unlicensed": bool(m.get("isUnlicensedMA")),
+            "description": clean_text(m.get("description"), 200),
+            "os": _s((m.get("operatingSystem") or {}).get("name")),
+        })
+    return out
+
+
+def collect_license(c: Client) -> dict:
+    # Deliberately only these fields: the response also carries serial number and
+    # registration code, which must not end up in the agent output.
+    lic = c.request("GET", "/V4/License") or {}
+    return {
+        "mode": _s(lic.get("licenseMode")),
+        "edition": _s(lic.get("edition")),
+        "expiry": _int(lic.get("expiryDate")),
+    }
+
+
+def collect_license_usage(c: Client) -> dict:
+    payload = c.request("GET", "/CommServ/LicenseUsage") or {}
+    groups = {}
+    types = []
+    for group_key, group in (("capacity", "capacityLicInfo"), ("usage", "usageLicInfo")):
+        info = payload.get(group)
+        if not isinstance(info, dict):
+            continue
+        groups[group_key] = {
+            "grace_period": _int(info.get("gracePeriod")),
+            "over_capacity_msg": bool(info.get("ShowOverCapacityMsg")),
+            "ip_valid": info.get("isIPValid"),
+        }
+        for t in info.get("licTypes") or []:
+            if not isinstance(t, dict):
+                continue
+            name = _s((t.get("license") or {}).get("LicenseName")).strip()
+            if not name:
+                continue
+            types.append({
+                "name": name,
+                "group": group_key,
+                "id": _int((t.get("license") or {}).get("LicenseId")),
+                "used": _int(t.get("usedCapacity")) or 0,
+                "total": _int(t.get("totalCapacity")) or 0,
+                "expired": bool(t.get("expiredLicense")),
+                "evaluation": bool(t.get("evaluationLicense")),
+                "applied": bool(t.get("licenseApplied")),
+            })
+    return {"groups": groups, "types": types}
+
+
+# --------------------------------------------------------------------------- output
+
+def section(name: str, payload: Any) -> None:
+    sys.stdout.write(f"<<<{name}:sep(0)>>>\n")
+    sys.stdout.write(json.dumps(payload, ensure_ascii=False, separators=(",", ":")) + "\n")
+
+
+def run_group(name: str, func, errors: dict, *args):
+    try:
+        return func(*args)
+    except AgentError as exc:
+        errors[name] = str(exc)
+    except Exception as exc:  # noqa: BLE001 - unexpected API shape must not kill the agent
+        errors[name] = f"{type(exc).__name__}: {exc}"
+    return None
+
+
+def main(argv: list[str] | None = None) -> int:
+    args = parse_args(argv)
+    started = time.time()
+    client = Client(args.url, not args.no_cert_check, args.timeout)
+    errors: dict[str, str] = {}
+    source: dict[str, Any] = {"version": VERSION, "url": args.url}
+
+    try:
+        client.login(args.user, args.password)
+    except AgentError as exc:
+        source.update({"ok": False, "error": str(exc), "duration": round(time.time() - started, 3)})
+        section("commvault_rest_source", source)
+        return 0
+
+    try:
+        source["commserv"] = run_group("commserv", collect_commserv, errors, client)
+
+        if not args.no_jobs:
+            res = run_group("jobs", collect_jobs, errors, client, args.job_lookback, args.page_size)
+            if res:
+                jobs, source["jobs"] = res
+                section("commvault_rest_jobs", {"data": jobs})
+            else:
+                section("commvault_rest_jobs", {"error": errors["jobs"]})
+            active = run_group("active_jobs", collect_active_jobs, errors, client)
+            section("commvault_rest_active_jobs",
+                    {"data": active} if active is not None else {"error": errors["active_jobs"]})
+
+        if not args.no_storage:
+            pools = run_group("storage", collect_storage, errors, client)
+            section("commvault_rest_storage",
+                    {"data": pools} if pools is not None else {"error": errors["storage"]})
+
+        if not args.no_mediaagents:
+            mas = run_group("mediaagents", collect_mediaagents, errors, client)
+            section("commvault_rest_mediaagents", {"data": mas, "fetched": int(time.time())}
+                    if mas is not None else {"error": errors["mediaagents"]})
+
+        if not args.no_license:
+            lic = run_group("license", collect_license, errors, client)
+            section("commvault_rest_license", {"data": lic, "fetched": int(time.time())}
+                    if lic is not None else {"error": errors["license"]})
+            usage = run_group("license_usage", collect_license_usage, errors, client)
+            section("commvault_rest_license_usage", {"data": usage, "fetched": int(time.time())}
+                    if usage is not None else {"error": errors["license_usage"]})
+
+        vms = None
+        if not args.no_vms:
+            res = run_group("vms", collect_vms, errors, client)
+            if res:
+                summary, vms = res
+                section("commvault_rest_vms", {"data": summary})
+            else:
+                section("commvault_rest_vms", {"error": errors["vms"]})
+    finally:
+        client.logout()
+
+    source.update({"ok": True, "errors": errors, "duration": round(time.time() - started, 3)})
+    section("commvault_rest_source", source)
+
+    if vms and not args.no_vm_piggyback:
+        for host, vm in sorted(vms.items()):
+            sys.stdout.write(f"<<<<{host}>>>>\n")
+            section("commvault_rest_vm", {"data": vm})
+        sys.stdout.write("<<<<>>>>\n")
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

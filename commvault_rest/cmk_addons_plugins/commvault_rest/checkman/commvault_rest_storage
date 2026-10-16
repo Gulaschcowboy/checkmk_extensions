@@ -1,0 +1,17 @@
+title: Commvault Storage Pool %s
+agents: commvault_rest
+catalog: app/other
+license: GPLv2
+distribution:
+description:
+ Checks the status text and capacity of one Commvault storage pool.
+ "Online" is OK, "Online (...)" (e.g. a MediaAgent offline) WARN, "Offline ..."
+ CRIT, anything else WARN. Capacity, trend and levels use the standard
+ "Filesystems (used space and growth)" ruleset. Pools that do not report a
+ capacity (tape, cloud, copy pools) only show their status.
+
+item:
+ The storage pool name.
+
+discovery:
+ One service per storage pool.

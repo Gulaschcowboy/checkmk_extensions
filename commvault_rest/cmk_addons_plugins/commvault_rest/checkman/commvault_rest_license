@@ -1,0 +1,14 @@
+title: Commvault License
+agents: commvault_rest
+catalog: app/other
+license: GPLv2
+distribution:
+description:
+ Checks the CommCell license (GET /V4/License): license mode (not PRODUCTION
+ is WARN) and remaining time until the expiry date (default WARN below 60
+ days, CRIT below 30 days, CRIT if expired). Also shows over capacity, grace
+ period and invalid license IP flags reported by GET /CommServ/LicenseUsage.
+ Serial number and registration code are not fetched into the agent output.
+
+discovery:
+ One service on the CommServe host.

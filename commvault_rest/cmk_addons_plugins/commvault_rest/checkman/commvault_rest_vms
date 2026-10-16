@@ -1,0 +1,13 @@
+title: Commvault VMs
+agents: commvault_rest
+catalog: app/other
+license: GPLv2
+distribution:
+description:
+ Summary of all virtual machines known to Commvault (retired VMs are not
+ counted): number of VMs per SLA and protection status. VMs that missed their
+ SLA and VMs with status FAILED (not excluded from SLA) are WARN, VMs with
+ status WARNING OK by default (ruleset "Commvault VM summary").
+
+discovery:
+ One service on the host running the Commvault REST special agent.

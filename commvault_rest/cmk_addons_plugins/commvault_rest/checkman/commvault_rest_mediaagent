@@ -1,0 +1,17 @@
+title: Commvault MediaAgent %s
+agents: commvault_rest
+catalog: app/other
+license: GPLv2
+distribution:
+description:
+ Checks the status of one Commvault MediaAgent as reported by the CommServe
+ (GET /V4/MediaAgent). ONLINE is OK. OFFLINE is CRIT, except offline reason
+ code 0 ("No errors detected"), which is WARN. Unlicensed MediaAgents are WARN.
+ The version and the query time are shown; the API reports no timestamp of
+ its own. All states are configurable in the "Commvault MediaAgents" ruleset.
+
+item:
+ The MediaAgent name.
+
+discovery:
+ One service per MediaAgent.

@@ -1,0 +1,20 @@
+title: Commvault VM Backup
+agents: commvault_rest
+catalog: app/other
+license: GPLv2
+distribution:
+description:
+ Piggyback check on the VM host: SLA status (met OK, missed CRIT, excluded
+ OK), protection status (PROTECTED OK, WARNING WARN, FAILED CRIT,
+ NOT_PROTECTED WARN, DISCOVERED WARN), last backup with failure reason and the
+ age of the last successful backup (optional levels). VMs excluded from the
+ SLA are not evaluated further. All states are configurable in the ruleset
+ "Commvault VM backup".
+
+ The piggyback host name is the VM name (characters other than letters,
+ digits, dot, dash and underscore replaced by "_"). If several Commvault
+ entries share a name, the entry with SLA and the most recent backup wins;
+ the others are listed in the details.
+
+discovery:
+ One service on every piggyback host (VM) delivered by the special agent.
