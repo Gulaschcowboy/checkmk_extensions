@@ -3,7 +3,7 @@
                 'backup job per subclient with configurable job states, active jobs with runtime '
                 'levels and wait reason, storage pool status and capacity (filesystem levels and '
                 'trends), VM summary and one piggyback service per VM with SLA and protection '
-                'status, MediaAgent status, license expiry and usage per license type. SQL transaction log jobs are evaluated separately within the subclient service. Beta. Incompatible changes are expected before 1.0.0 (API base URL settings, job types in the active jobs rule); affected rules may have to be re-created.',
+                'status, MediaAgent status, license expiry and usage per license type.',
  'download_url': 'https://github.com/Gulaschcowboy/checkmk_extensions',
  'files': {'cmk_addons_plugins': ['commvault_rest/agent_based/commvault_rest.py',
                                   'commvault_rest/checkman/commvault_rest_active_jobs',
