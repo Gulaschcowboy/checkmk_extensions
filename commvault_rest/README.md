@@ -70,6 +70,12 @@ summary", "Commvault VM backup", "Commvault MediaAgents", "Commvault license",
 "Commvault license usage". Storage pools use the standard "Filesystems (used
 space and growth)" rule.
 
+## Acknowledgements
+
+Many thanks to Valentin Bleil for providing the Commvault systems for
+testing, for collecting test data and for contributing his Commvault
+expertise.
+
 ## Changelog
 
 - **0.9.0** — first release (beta, see note above).
