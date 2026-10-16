@@ -42,7 +42,7 @@ from urllib.error import HTTPError, URLError
 from urllib.parse import urlencode
 from urllib.request import HTTPSHandler, Request, build_opener
 
-VERSION = "0.9.0-b8"
+VERSION = "0.9.0"
 MAX_JOB_PAGES = 100
 TLOG_LEVEL = "transaction log"
 DDP_APP = "distributed data platforms"

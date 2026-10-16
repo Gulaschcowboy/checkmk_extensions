@@ -22,7 +22,7 @@
                                   'commvault_rest/server_side_calls/commvault_rest.py']},
  'name': 'commvault_rest',
  'title': 'Commvault (via REST API)',
- 'version': '0.9.0-b8',
+ 'version': '0.9.0',
  'version.min_required': '2.3.0',
  'version.packaged': '2.5.0',
  'version.usable_until': None}
