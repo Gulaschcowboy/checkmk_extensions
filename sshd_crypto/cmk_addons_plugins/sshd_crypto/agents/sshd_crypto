@@ -1,0 +1,54 @@
+#!/bin/sh
+#
+# Checkmk agent plug-in: SSH daemon crypto algorithms (sshd_crypto).
+# ---------------------------------------------------------------------------
+# AGENT side of the "sshd_crypto" plug-in. It only COLLECTS the algorithm
+# lists the local OpenSSH daemon offers and prints them as a Checkmk agent
+# section; all evaluation (post-quantum key exchange, disallowed algorithms)
+# is done by the server-side check plug-in.
+#
+# Source of truth is the effective daemon configuration as reported by
+# "sshd -T" (fallback: "sshd -G"), i.e. after includes, crypto policies and
+# compiled-in defaults have been applied. Match blocks are NOT evaluated.
+#
+# Output:
+#     <<<sshd_crypto>>>
+#     version OpenSSH_9.6p1 Ubuntu-3ubuntu13.5, OpenSSL 3.0.13 30 Jan 2024
+#     kexalgorithms sntrup761x25519-sha512@openssh.com,curve25519-sha256,...
+#     ciphers chacha20-poly1305@openssh.com,aes128-ctr,...
+#     macs umac-64-etm@openssh.com,...
+#     hostkeyalgorithms ssh-ed25519-cert-v01@openssh.com,...
+#     pubkeyacceptedalgorithms ssh-ed25519-cert-v01@openssh.com,...
+#
+# (OpenSSH < 8.5 names the last option "pubkeyacceptedkeytypes"; both are
+# passed through, the check handles either.)
+#
+# If no sshd binary is found or it produces no output, the plug-in prints
+# NOTHING, so no service is discovered on that host.
+#
+# POSIX sh, no dependencies besides grep. Must run as root (sshd -T needs
+# to read the host keys), which is the default for Checkmk agent plug-ins.
+# ---------------------------------------------------------------------------
+
+PATH="$PATH:/usr/sbin:/usr/local/sbin:/sbin"
+export PATH
+
+command -v sshd >/dev/null 2>&1 || exit 0
+
+CONFIG=$(sshd -T 2>/dev/null || sshd -G 2>/dev/null)
+[ -n "$CONFIG" ] || exit 0
+
+# "sshd -V" exists since OpenSSH 9.8; older daemons reject it, then fall
+# back to the client version (same package on all common distributions).
+VERSION=$(sshd -V 2>&1 | head -n 1)
+case "$VERSION" in
+    OpenSSH*) ;;
+    *) VERSION=$(ssh -V 2>&1 | head -n 1) ;;
+esac
+
+echo "<<<sshd_crypto>>>"
+case "$VERSION" in
+    OpenSSH*) echo "version $VERSION" ;;
+esac
+printf '%s\n' "$CONFIG" | grep -Ei '^(kexalgorithms|ciphers|macs|hostkeyalgorithms|pubkeyacceptedalgorithms|pubkeyacceptedkeytypes) '
+exit 0

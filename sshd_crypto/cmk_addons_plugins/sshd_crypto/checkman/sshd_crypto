@@ -1,0 +1,44 @@
+title: SSH daemon crypto algorithms (PQC key exchange, disallowed algorithms)
+agents: linux
+catalog: app/sshd
+license: GPLv2
+distribution: check_mk
+description:
+ This check evaluates the cryptographic algorithms offered by the OpenSSH
+ daemon according to its effective configuration ({sshd -T}): key exchange
+ algorithms, ciphers, MACs, host key algorithms and accepted public key
+ algorithms.
+
+ It reports whether at least one post-quantum (PQC) hybrid key exchange
+ algorithm is offered, e.g. {mlkem768x25519-sha256} or
+ {sntrup761x25519-sha512@openssh.com}. If none is offered, the service goes
+ to WARN by default. Optionally, offering classic (non-PQC) key exchange
+ algorithms in addition can be alerted on, to enforce a PQC-only setup.
+
+ Furthermore, per category a list of disallowed algorithm patterns (shell
+ wildcards) can be configured. By default only broken or deprecated
+ algorithms that are not part of any current OpenSSH default set are
+ disallowed (SHA-1 Diffie-Hellman groups, CBC/RC4/3DES ciphers, MD5 and
+ truncated SHA-1 MACs, DSA and SHA-1 RSA signatures), so a stock modern
+ sshd is OK.
+
+ Optionally, per category a list of required algorithm patterns can be
+ configured, e.g. {ssh-ed25519} for host keys. Every pattern must match at
+ least one offered algorithm, otherwise the service goes to WARN (configurable).
+ No algorithms are required by default.
+
+ The full algorithm lists and the OpenSSH version are shown in the service
+ details.
+
+ Note: SSH uses the first algorithm of the client's list that the server
+ also supports, so the order of the server's list does not matter and is not
+ evaluated. The check shows what the server offers, not what a particular
+ client negotiates. Match blocks in sshd_config are not evaluated.
+
+ The data is collected by the agent plug-in {sshd_crypto}, which can be
+ deployed via the Agent Bakery (rule "SSH daemon crypto algorithms (Linux)").
+ Parameters are set with the rule "SSH daemon crypto algorithms".
+
+discovery:
+ One service is created on hosts where the agent plug-in reports an SSH
+ daemon configuration.

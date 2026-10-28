@@ -1,0 +1,28 @@
+{'author': 'Alex Wilms',
+ 'description': 'Agent-based monitoring of the cryptographic algorithms offered by the '
+                'OpenSSH daemon (effective configuration from "sshd -T"): key exchange '
+                'algorithms, ciphers, MACs, host key and accepted public key algorithms. '
+                'The check reports whether a post-quantum (PQC) hybrid key exchange such '
+                'as mlkem768x25519-sha256 or sntrup761x25519-sha512@openssh.com is '
+                'offered (WARN if not, configurable), can optionally enforce a PQC-only '
+                'key exchange, and alerts on configurable per-category lists of '
+                'disallowed algorithms (wildcard patterns; defaults cover only broken '
+                'legacy algorithms not enabled by current OpenSSH) as well as on '
+                'optional per-category lists of required algorithms. The OpenSSH version '
+                'and all algorithm lists are shown in the service details. Includes the '
+                'agent plug-in, a check-parameter ruleset, an Agent Bakery ruleset + '
+                'bakery plug-in and a man page. Complements the built-in "SSH daemon '
+                'configuration" check, which does not evaluate these options.',
+ 'download_url': 'https://github.com/Gulaschcowboy/checkmk_extensions',
+ 'files': {'cmk_addons_plugins': ['sshd_crypto/agents/sshd_crypto',
+                                  'sshd_crypto/agent_based/sshd_crypto.py',
+                                  'sshd_crypto/rulesets/sshd_crypto.py',
+                                  'sshd_crypto/rulesets/agent_config_sshd_crypto.py',
+                                  'sshd_crypto/bakery/bakery_plugin_sshd_crypto.py',
+                                  'sshd_crypto/checkman/sshd_crypto']},
+ 'name': 'sshd_crypto',
+ 'title': 'SSH daemon crypto algorithms / PQC key exchange (agent-based + bakery)',
+ 'version': '0.9.0',
+ 'version.min_required': '2.3.0',
+ 'version.packaged': 'hermes',
+ 'version.usable_until': None}
