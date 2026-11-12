@@ -29,7 +29,7 @@
                                   'opnsense/checkman/opnsense_smart']},
  'name': 'opnsense',
  'title': 'OPNsense firewall (REST API)',
- 'version': '1.1.1-b1',
+ 'version': '1.1.1',
  'version.min_required': '2.3.0b1',
  'version.packaged': 'cmk-mkp-tool 3.0.0',
  'version.usable_until': None}

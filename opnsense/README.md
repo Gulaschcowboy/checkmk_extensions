@@ -108,7 +108,7 @@ health and temperature are reported.
 
 ## Changelog
 
-- 1.1.1 (unreleased): Remove the combined "OPNsense load average" and
+- 1.1.1: Remove the combined "OPNsense load average" and
   "OPNsense memory & swap" graphs ([#5](https://github.com/Gulaschcowboy/checkmk_extensions/issues/5)).
   They only referenced Checkmk's canonical metrics (`load1/5/15`, `mem_used`,
   `swap_used`), and since Checkmk binds graph templates by metric name, they
@@ -138,8 +138,8 @@ health and temperature are reported.
 ## Install
 
 ```
-mkp add opnsense-1.1.0.mkp
-mkp enable opnsense 1.1.0
+mkp add opnsense-1.1.1.mkp
+mkp enable opnsense 1.1.1
 ```
 
 Then create a host for the firewall and add a rule under
