@@ -20,7 +20,6 @@
                                   'opnsense/rulesets/opnsense.py',
                                   'opnsense/rulesets/opnsense_params.py',
                                   'opnsense/server_side_calls/opnsense.py',
-                                  'opnsense/graphing/opnsense.py',
                                   'opnsense/graphing/opnsense_smart.py',
                                   'opnsense/checkman/opnsense_firmware',
                                   'opnsense/checkman/opnsense_services',
@@ -30,7 +29,7 @@
                                   'opnsense/checkman/opnsense_smart']},
  'name': 'opnsense',
  'title': 'OPNsense firewall (REST API)',
- 'version': '1.1.0',
+ 'version': '1.1.1-b1',
  'version.min_required': '2.3.0b1',
  'version.packaged': 'cmk-mkp-tool 3.0.0',
  'version.usable_until': None}

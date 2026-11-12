@@ -18,9 +18,9 @@ produces the following services:
 
 All metrics reuse Checkmk's canonical names (`load1/5/15`, `mem_used`,
 `swap_used`, `fs_used_percent`, `uptime`, `temp`), so the builtin graphs,
-perfometers and units apply automatically. Two combined graphs are added on
-top: OPNsense load average and OPNsense memory & swap. The SMART check adds
-one plugin-specific metric, `ssd_life_remaining`, with its own graph.
+perfometers and units apply automatically (e.g. Checkmk's *CPU load* and
+*RAM + Swap* graphs). The SMART check adds one plugin-specific metric,
+`ssd_life_remaining`, with its own graph.
 
 ## Layout
 
@@ -37,8 +37,7 @@ cmk_addons_plugins/opnsense/
 │   ├── opnsense.py
 │   └── opnsense_params.py
 ├── server_side_calls/opnsense.py   # wires the ruleset to the special agent
-├── graphing/                       # combined graphs + plugin-specific metrics
-│   ├── opnsense.py                 # combined load + memory graphs
+├── graphing/                       # plugin-specific metrics
 │   └── opnsense_smart.py           # ssd_life_remaining metric + graph
 └── checkman/                       # manpages (one per check plugin)
     ├── opnsense_firmware
@@ -109,6 +108,14 @@ health and temperature are reported.
 
 ## Changelog
 
+- 1.1.1 (unreleased): Remove the combined "OPNsense load average" and
+  "OPNsense memory & swap" graphs ([#5](https://github.com/Gulaschcowboy/checkmk_extensions/issues/5)).
+  They only referenced Checkmk's canonical metrics (`load1/5/15`, `mem_used`,
+  `swap_used`), and since Checkmk binds graph templates by metric name, they
+  showed up on every service emitting those metrics (e.g. *CPU load* and
+  memory services of all Linux hosts). Checkmk's builtin *CPU load* and
+  *RAM + Swap* graphs cover the same data. Metrics and RRD history are
+  unchanged.
 - 1.1.0: Add SMART disk health monitoring (`opnsense_smart`) — health
   self-assessment, temperature and SSD life remaining per physical disk,
   collected through the OPNsense os-smart plugin (`api/smart/service/*`).
