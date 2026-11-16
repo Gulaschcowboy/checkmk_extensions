@@ -177,3 +177,64 @@ check_plugin_opnsense_memory = CheckPlugin(
     check_default_parameters={"levels": ("fixed", (80.0, 90.0))},
     check_ruleset_name="opnsense_memory",
 )
+
+
+# --- Temperature sensors (diagnostics/system/system_temperature) -----------
+# e.g. [{"device": "dev.cpu.0.temperature", "device_seq": "0",
+#        "temperature": "45.0", "type": "cpu", "type_translated": "CPU"}]
+
+def _temperature_sensors(section):
+    sensors = {}
+    data = section.get("temperature") if isinstance(section, dict) else None
+    if isinstance(data, dict):
+        data = data.get("rows") or data.get("items") or []
+    if not isinstance(data, list):
+        return sensors
+    for entry in data:
+        if not isinstance(entry, dict):
+            continue
+        m = re.search(r"-?\d+(?:\.\d+)?", str(entry.get("temperature", "")))
+        if not m:
+            continue
+        kind = entry.get("type_translated") or entry.get("type") or "Sensor"
+        name = "%s %s" % (kind, entry.get("device_seq", entry.get("device", "")))
+        sensors[name.strip()] = (float(m.group(0)), entry.get("device", ""))
+    return sensors
+
+
+def discover_opnsense_temperature(section):
+    for item in sorted(_temperature_sensors(section)):
+        yield Service(item=item)
+
+
+def check_opnsense_temperature(item, params, section):
+    sensor = _temperature_sensors(section).get(item)
+    if sensor is None:
+        err = (section.get("temperature") or {}) if isinstance(section, dict) else {}
+        if isinstance(err, dict) and err.get("_error"):
+            yield Result(state=State.UNKNOWN, summary="API error: %s" % err["_error"])
+        else:
+            yield Result(state=State.UNKNOWN, summary="Sensor not found in API data")
+        return
+    value, device = sensor
+    yield from check_levels(
+        value,
+        levels_upper=params.get("levels"),
+        metric_name="temp",
+        render_func=lambda v: "%.1f °C" % v,
+        label="Temperature",
+        boundaries=(-273.15, None),
+    )
+    if device:
+        yield Result(state=State.OK, notice="Sensor: %s" % device)
+
+
+check_plugin_opnsense_temperature = CheckPlugin(
+    name="opnsense_temperature",
+    sections=["opnsense_system"],
+    service_name="OPNsense Temperature %s",
+    discovery_function=discover_opnsense_temperature,
+    check_function=check_opnsense_temperature,
+    check_default_parameters={"levels": ("fixed", (70.0, 80.0))},
+    check_ruleset_name="opnsense_temperature",
+)

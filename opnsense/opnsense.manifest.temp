@@ -5,31 +5,44 @@
                 'uptime, load, memory, swap, filesystem usage and SMART disk '
                 'health when the os-smart plugin is installed: health '
                 'self-assessment, temperature and SSD life remaining. '
-                'All disks reported by os-smart are collected; unwanted '
-                'ones can be excluded via a Checkmk disabled-services rule. '
-                'Configurable HTTPS port (default 8443) and '
-                'optional TLS certificate check bypass for self-signed '
-                'certificates.',
+                'Additionally gateway status (dpinger RTT/loss), WireGuard '
+                'peers (handshake age, traffic), Kea/Dnsmasq DHCPv4 pool '
+                'usage, temperature sensors and a throttled package '
+                'vulnerability audit (pkg audit) with visible result age. All '
+                'disks reported by os-smart are collected; unwanted ones can '
+                'be excluded via a Checkmk disabled-services rule. '
+                'Configurable HTTPS port (default 8443) and optional TLS '
+                'certificate check bypass for self-signed certificates.',
  'download_url': 'https://github.com/Gulaschcowboy/checkmk_extensions',
- 'files': {'cmk_addons_plugins': ['opnsense/libexec/agent_opnsense',
-                                  'opnsense/agent_based/opnsense_firmware.py',
-                                  'opnsense/agent_based/opnsense_services.py',
-                                  'opnsense/agent_based/opnsense_system.py',
+ 'files': {'cmk_addons_plugins': ['opnsense/agent_based/opnsense_audit.py',
+                                  'opnsense/agent_based/opnsense_dhcp.py',
                                   'opnsense/agent_based/opnsense_disk.py',
+                                  'opnsense/agent_based/opnsense_firmware.py',
+                                  'opnsense/agent_based/opnsense_gateways.py',
+                                  'opnsense/agent_based/opnsense_services.py',
                                   'opnsense/agent_based/opnsense_smart.py',
+                                  'opnsense/agent_based/opnsense_system.py',
+                                  'opnsense/agent_based/opnsense_wireguard.py',
+                                  'opnsense/checkman/opnsense_audit',
+                                  'opnsense/checkman/opnsense_dhcp',
+                                  'opnsense/checkman/opnsense_disk',
+                                  'opnsense/checkman/opnsense_firmware',
+                                  'opnsense/checkman/opnsense_gateways',
+                                  'opnsense/checkman/opnsense_memory',
+                                  'opnsense/checkman/opnsense_services',
+                                  'opnsense/checkman/opnsense_smart',
+                                  'opnsense/checkman/opnsense_system',
+                                  'opnsense/checkman/opnsense_temperature',
+                                  'opnsense/checkman/opnsense_wireguard',
+                                  'opnsense/graphing/opnsense_extra.py',
+                                  'opnsense/graphing/opnsense_smart.py',
+                                  'opnsense/libexec/agent_opnsense',
                                   'opnsense/rulesets/opnsense.py',
                                   'opnsense/rulesets/opnsense_params.py',
-                                  'opnsense/server_side_calls/opnsense.py',
-                                  'opnsense/graphing/opnsense_smart.py',
-                                  'opnsense/checkman/opnsense_firmware',
-                                  'opnsense/checkman/opnsense_services',
-                                  'opnsense/checkman/opnsense_system',
-                                  'opnsense/checkman/opnsense_memory',
-                                  'opnsense/checkman/opnsense_disk',
-                                  'opnsense/checkman/opnsense_smart']},
+                                  'opnsense/server_side_calls/opnsense.py']},
  'name': 'opnsense',
  'title': 'OPNsense firewall (REST API)',
- 'version': '1.1.1',
+ 'version': '1.2.0',
  'version.min_required': '2.3.0b1',
  'version.packaged': 'cmk-mkp-tool 3.0.0',
  'version.usable_until': None}

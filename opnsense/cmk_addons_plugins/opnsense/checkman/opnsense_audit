@@ -1,0 +1,25 @@
+title: OPNsense: Package Audit
+agents: opnsense
+catalog: os/misc
+license: GPLv2
+distribution: check_mk
+
+description:
+ This check reports known vulnerabilities in the installed packages of an
+ OPNsense firewall ({pkg audit}, the "Audit > Security" function of the
+ firmware page). Because the audit downloads the vulnerability database on
+ the firewall, the special agent {agent_opnsense} triggers it only every N
+ minutes (special agent rule, default 360, 0 disables it) via
+ {core/firmware/audit} and caches the last finished result on the Checkmk
+ site.
+
+ The service is {WARN} when vulnerable packages are found and lists them
+ with their CVE ids in the details. The age of the cached result is shown
+ separately and becomes {WARN}/{CRIT} when it exceeds 2 / 4 audit
+ intervals plus one hour, so a stale result is never presented as fresh.
+ The API user needs the "System: Firmware" privilege. Note that this
+ privilege also allows firmware updates, package installation, reboot and
+ power off - it is not read-only.
+
+discovery:
+ One service {OPNsense Package audit} is created per firewall.

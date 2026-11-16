@@ -15,12 +15,24 @@ produces the following services:
 | `opnsense_memory`   | RAM and swap usage (registered in `opnsense_system.py`)|
 | `opnsense_disk`     | One service per mounted filesystem                    |
 | `opnsense_smart`    | One service per physical disk (SMART health, temperature, SSD life) |
+| `opnsense_temperature` | One service per temperature sensor (CPU cores, ACPI zones) |
+| `opnsense_gateways` | One service per gateway (status, RTT, packet loss)    |
+| `opnsense_wireguard`| One service per WireGuard peer (latest handshake age, traffic) |
+| `opnsense_dhcp`     | One service per DHCPv4 pool (Kea and/or Dnsmasq lease usage) |
+| `opnsense_audit`    | Known vulnerabilities in installed packages (`pkg audit`) |
 
 All metrics reuse Checkmk's canonical names (`load1/5/15`, `mem_used`,
 `swap_used`, `fs_used_percent`, `uptime`, `temp`), so the builtin graphs,
 perfometers and units apply automatically (e.g. Checkmk's *CPU load* and
 *RAM + Swap* graphs). The SMART check adds one plugin-specific metric,
-`ssd_life_remaining`, with its own graph.
+`ssd_life_remaining`, with its own graph; WireGuard and the package audit add
+`opnsense_wg_handshake_age` and `opnsense_vulnerable_packages`.
+
+The optional checks (SMART, gateways, WireGuard, DHCP, package audit) need
+additional API privileges — see
+[Required API key privileges](#required-api-key-privileges). If a privilege
+or the underlying OPNsense component is missing, only the affected services
+are skipped or report the error; the other checks are unaffected.
 
 ## Layout
 
@@ -30,22 +42,32 @@ cmk_addons_plugins/opnsense/
 ├── agent_based/                    # check plugins (parse + evaluate sections)
 │   ├── opnsense_firmware.py
 │   ├── opnsense_services.py
-│   ├── opnsense_system.py          # system + memory CheckPlugins
+│   ├── opnsense_system.py          # system + memory + temperature CheckPlugins
 │   ├── opnsense_disk.py
-│   └── opnsense_smart.py           # SMART disk health CheckPlugin
+│   ├── opnsense_smart.py           # SMART disk health CheckPlugin
+│   ├── opnsense_gateways.py
+│   ├── opnsense_wireguard.py
+│   ├── opnsense_dhcp.py            # Kea + Dnsmasq DHCPv4 pools
+│   └── opnsense_audit.py           # pkg audit
 ├── rulesets/                       # WATO rules (connection params + check params)
 │   ├── opnsense.py
 │   └── opnsense_params.py
 ├── server_side_calls/opnsense.py   # wires the ruleset to the special agent
 ├── graphing/                       # plugin-specific metrics
-│   └── opnsense_smart.py           # ssd_life_remaining metric + graph
+│   ├── opnsense_smart.py           # ssd_life_remaining metric + graph
+│   └── opnsense_extra.py           # WireGuard handshake age, vulnerable packages
 └── checkman/                       # manpages (one per check plugin)
     ├── opnsense_firmware
     ├── opnsense_services
     ├── opnsense_system
     ├── opnsense_memory
     ├── opnsense_disk
-    └── opnsense_smart
+    ├── opnsense_smart
+    ├── opnsense_temperature
+    ├── opnsense_gateways
+    ├── opnsense_wireguard
+    ├── opnsense_dhcp
+    └── opnsense_audit
 ```
 
 ## SMART disk health
@@ -108,6 +130,26 @@ health and temperature are reported.
 
 ## Changelog
 
+- 1.2.0: New checks ([#6](https://github.com/Gulaschcowboy/checkmk_extensions/issues/6)):
+  - `opnsense_gateways` — one service per gateway with dpinger status,
+    RTT and packet loss (`rta`/`pl` metrics). States per gateway status
+    (down `CRIT`, loss/delay/force-down `WARN`) and optional RTT/loss levels
+    are configurable via the *OPNsense gateways* rule.
+  - `opnsense_wireguard` — one service per WireGuard peer with latest
+    handshake age (default `WARN` 5 min / `CRIT` 15 min) and transfer
+    counters. Rule: *OPNsense WireGuard peers*.
+  - `opnsense_dhcp` — DHCPv4 pool usage for Kea and Dnsmasq (default
+    `WARN` 80 % / `CRIT` 90 %). Rule: *OPNsense DHCP pool usage*.
+  - `opnsense_audit` — known vulnerabilities in installed packages
+    (`pkg audit`, default `WARN`). The audit is triggered by the special
+    agent at most every 360 minutes (configurable, 0 disables it) and the
+    result is cached on the Checkmk site. Rule: *OPNsense package audit*.
+  - `opnsense_temperature` — one service per temperature sensor (default
+    `WARN` 70 °C / `CRIT` 80 °C). Rule: *OPNsense temperature sensors*.
+  - Documentation: exact OPNsense privilege names and a warning that most
+    of them also grant write/action rights (firmware updates, reboot,
+    service start/stop, config changes), which `System: Deny config write`
+    does not fully prevent.
 - 1.1.1: Remove the combined "OPNsense load average" and
   "OPNsense memory & swap" graphs ([#5](https://github.com/Gulaschcowboy/checkmk_extensions/issues/5)).
   They only referenced Checkmk's canonical metrics (`load1/5/15`, `mem_used`,
@@ -138,8 +180,8 @@ health and temperature are reported.
 ## Install
 
 ```
-mkp add opnsense-1.1.1.mkp
-mkp enable opnsense 1.1.1
+mkp add opnsense-1.2.0.mkp
+mkp enable opnsense 1.2.0
 ```
 
 Then create a host for the firewall and add a rule under
@@ -158,19 +200,53 @@ Create an API key/secret in OPNsense under *System → Access → Users →
 
 ## Required API key privileges
 
-The special agent only ever performs **read-only** calls (GET, or POST without
-writing state). The API key inherits the privileges of the OPNsense user it belongs
-to, so create a dedicated **read-only monitoring user** and grant exactly the
-privileges below — nothing more. Assign them under *System → Access → Users →
-(edit user) → Effective Privileges* (or via a group).
+The special agent itself only performs **read-only** calls (GET, or POST
+without writing state). The single exception is the package audit: it starts
+`pkg audit` on the firewall (POST `core/firmware/audit`, at most every
+`--audit-interval` minutes, default 6 h; `0` disables it). That run only
+refreshes the vulnerability database and reads the installed packages; it
+changes neither configuration nor packages.
+
+The API key inherits the privileges of the OPNsense user it belongs to, so
+create a dedicated **monitoring user** and grant exactly the privileges below —
+nothing more. Assign them under *System → Access → Users → (edit user) →
+Effective Privileges* (or via a group). The names below are exactly as shown
+there.
 
 | OPNsense privilege | Covers API pattern        | Used for                                    |
 |--------------------|---------------------------|---------------------------------------------|
-| **System: Firmware** | `api/core/firmware/*`     | `core/firmware/status` — firmware/update status |
+| **System: Firmware** | `api/core/firmware/*`     | `core/firmware/status` — firmware/update status; `core/firmware/audit` + `…/upgradestatus` — package audit |
 | **Status: Services** | `api/core/service/*`      | `core/service/search` — per-daemon service discovery |
-| **System: Status**   | `api/core/system/status*` | `core/system/status` — overall system status |
+| **System: Status**   | `api/core/system/status*`, `api/core/system/dismiss_status` | `core/system/status` — overall system status |
 | **Lobby: Dashboard** | `api/diagnostics/system/*` (dashboard set) | `diagnostics/system/system_time`, `…/system_resources`, `…/system_disk`, `…/system_swap`, `…/system_temperature` — uptime, load, memory, swap, disk, temperature |
 | **Services: SMART** *(optional)* | `api/smart/service/*` | `smart/service/list` + `smart/service/info` — per-disk SMART health, temperature and SSD life (only used when the os-smart plugin is installed) |
+| **System: Gateways** *(optional)* | `api/routing/settings/*`, `api/routes/gateway/status` | `routes/gateway/status` — gateway status, RTT, loss |
+| **VPN: WireGuard: Status** *(optional)* | `api/wireguard/service/*` | `wireguard/service/show` — WireGuard peers |
+| **Services: DHCP: Kea(v4)** *(optional)* | `api/kea/dhcpv4/*`, `api/kea/leases4/*`, `api/kea/service/*` | `kea/dhcpv4/search_subnet`, `kea/leases4/search` — Kea DHCPv4 pool usage |
+| **Services: Dnsmasq DNS/DHCP: Settings** *(optional)* | `api/dnsmasq/*` | `dnsmasq/settings/search_range`, `dnsmasq/leases/search` — Dnsmasq DHCPv4 pool usage |
+
+> **Warning — these privileges are not read-only.** OPNsense privileges are
+> URL patterns per GUI page; there is no read/write split. Every privilege in
+> the table above (except *Lobby: Dashboard*) also covers write endpoints of
+> the same page:
+>
+> | Privilege | Write actions it also allows | Blocked by *System: Deny config write*? |
+> |-----------|------------------------------|------------------------------------------|
+> | System: Firmware | firmware **update / upgrade**, package **install / remove / reinstall / lock**, **reboot**, **power off** | **no** |
+> | Status: Services | **start / stop / restart** any service | **no** |
+> | System: Status | dismiss system status notices | no |
+> | Services: SMART | start / abort SMART self-tests | no |
+> | System: Gateways | edit gateway configuration (`api/routing/settings/*`) | yes |
+> | VPN: WireGuard: Status | WireGuard service **start / stop / restart / reconfigure** | no |
+> | Services: DHCP: Kea(v4) | edit Kea subnets/reservations; Kea service **start / stop / restart** | config: yes; service: no |
+> | Services: Dnsmasq DNS/DHCP: Settings | edit the whole Dnsmasq configuration; Dnsmasq service **start / stop / restart** | config: yes; service: no |
+>
+> Treat the API key/secret like an admin credential: store it only in the
+> Checkmk password store, restrict API access to the Checkmk site (firewall
+> rule on the GUI/API port), and grant only the optional privileges for the
+> features you actually use. Prefer *VPN: WireGuard: Status* over
+> *VPN: WireGuard: Configuration* — both cover the endpoint, but the latter
+> additionally allows editing the WireGuard configuration.
 
 Notes:
 - **Lobby: Dashboard** is the privilege that exposes the read-only
@@ -180,11 +256,14 @@ Notes:
 - **Services: SMART** is only needed if you want the `opnsense_smart` check.
   Without it the agent reports an empty SMART section and no SMART services are
   discovered — the other checks are unaffected.
-- Granting **System: Deny config write** to the monitoring user in addition is a
-  reasonable hardening step — the agent never writes configuration.
-- Privilege ↔ endpoint mapping verified against OPNsense core `ACL.xml`
-  (`OPNsense/Core/ACL/ACL.xml`) on the `master` branch. The `api/smart/*`
-  mapping comes from the ACL definition shipped with the os-smart plugin.
+- Granting **System: Deny config write** to the monitoring user in addition is
+  recommended — the agent never writes configuration. It only blocks
+  configuration saves, though, **not** service start/stop, firmware
+  updates, reboot or power off (see the warning above).
+- Privilege ↔ endpoint mapping (names, patterns and controller actions)
+  verified against the `ACL.xml` files and API controllers of OPNsense core
+  (`master` branch, models `Core`, `Routing`, `Wireguard`, `Kea`, `Dnsmasq`)
+  and of the os-smart plugin.
 
 ## Verified against
 

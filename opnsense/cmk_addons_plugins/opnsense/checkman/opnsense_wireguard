@@ -1,0 +1,25 @@
+title: OPNsense: WireGuard Peers
+agents: opnsense
+catalog: os/networking
+license: GPLv2
+distribution: check_mk
+
+description:
+ This check monitors a WireGuard peer on an OPNsense firewall. The data is
+ collected via the special agent {agent_opnsense} from the
+ {wireguard/service/show} REST API endpoint.
+
+ The service reports the age of the latest handshake (default levels
+ 5 / 15 minutes) and the transfer rates in and out. A peer that never
+ completed a handshake is {WARN}. Peers without regular traffic and no
+ persistent keepalive may legitimately show old handshakes; adjust or
+ disable the levels through the rule "OPNsense WireGuard peers".
+
+ The API user needs the "VPN: WireGuard: Status" privilege. Note that this
+ privilege also allows starting/stopping the WireGuard service.
+
+item:
+ The WireGuard interface and the peer name, for example {wg0 site-b}.
+
+discovery:
+ One service {OPNsense WireGuard INTERFACE PEER} is created for each peer.

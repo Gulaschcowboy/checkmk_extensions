@@ -8,20 +8,42 @@ username, API secret as password) and emits Checkmk agent sections:
     <<<opnsense_services:sep(0)>>>   JSON list from core/service/search
     <<<opnsense_system:sep(0)>>>     JSON: system/status + diagnostics gauges
     <<<opnsense_smart:sep(0)>>>      JSON: SMART data per disk (os-smart)
+    <<<opnsense_gateways:sep(0)>>>   JSON from routes/gateway/status
+    <<<opnsense_wireguard:sep(0)>>>  JSON from wireguard/service/show
+    <<<opnsense_dhcp:sep(0)>>>       JSON: Kea + Dnsmasq DHCPv4 ranges/leases
+    <<<opnsense_audit:sep(0)>>>      JSON: result of core/firmware/audit
 
-All endpoints are read-only (GET, or POST with empty body). A read-only user
-with "Status: Services" + "Lobby: Dashboard" + "System: Firmware" + "System:
-Status" privileges is sufficient. SMART data additionally requires the
-"Services: SMART" privilege and the os-smart plugin on OPNsense.
+All endpoints are read-only (GET, or POST with empty body) - except the
+package audit, which triggers "pkg audit" on the firewall (POST
+core/firmware/audit). It runs at most once per --audit-interval minutes; the
+result is cached on the Checkmk site. --audit-interval 0 disables it.
+
+Required privileges of the API user (exact names from OPNsense ACL.xml):
+    "Status: Services", "Lobby: Dashboard",
+    "System: Status"                         - base sections
+    "System: Firmware"                       - firmware status + audit
+    "Services: SMART"                        - SMART (os-smart plugin)
+    "System: Gateways"                       - gateways
+    "VPN: WireGuard: Status"                 - WireGuard peers
+    "Services: DHCP: Kea(v4)"                - DHCP pool usage (Kea)
+    "Services: Dnsmasq DNS/DHCP: Settings"   - DHCP pool usage (Dnsmasq)
+Missing privileges / plugins only blank out the affected section.
+WARNING: OPNsense privileges have no read/write split - all of the above
+except "Lobby: Dashboard" also allow write actions (e.g. firmware update,
+reboot, service start/stop, config changes). See README.
 """
 import argparse
-import json
-import sys
-import ssl
 import base64
+import json
+import os
+import re
+import ssl
+import sys
+import tempfile
+import time
+from urllib.error import HTTPError, URLError
 from urllib.parse import urlencode
 from urllib.request import Request, urlopen
-from urllib.error import HTTPError, URLError
 
 
 def parse_args(argv):
@@ -32,6 +54,8 @@ def parse_args(argv):
     p.add_argument("--no-cert-check", action="store_true",
                    help="Disable TLS certificate verification (self-signed)")
     p.add_argument("--timeout", type=int, default=20, help="Per-request timeout (s)")
+    p.add_argument("--audit-interval", type=int, default=360,
+                   help="Run the package audit every N minutes (0 = off, default 360)")
     p.add_argument("hostname", help="OPNsense host / address")
     return p.parse_args(argv)
 
@@ -74,6 +98,160 @@ class OPNsenseClient:
 def emit(section, payload):
     sys.stdout.write("<<<%s:sep(0)>>>\n" % section)
     sys.stdout.write(json.dumps(payload) + "\n")
+
+
+def _try(client, path, method="GET", form=None):
+    """Call an endpoint; on failure return {"_error": ..., "_code": ...}."""
+    try:
+        return client.call(path, method=method, form=form)
+    except HTTPError as exc:
+        return {"_error": str(exc), "_code": exc.code}
+    except (URLError, ValueError, OSError) as exc:
+        return {"_error": str(exc)}
+
+
+def _rows(payload):
+    if isinstance(payload, dict) and isinstance(payload.get("rows"), list):
+        return payload["rows"]
+    return []
+
+
+# --- DHCP -----------------------------------------------------------------
+def collect_dhcp(client):
+    """Kea + Dnsmasq: configured DHCPv4 ranges and active leases.
+
+    Leases are reduced to address (+ Kea state) to keep the section small.
+    """
+    result = {}
+    subnets = _try(client, "kea/dhcpv4/search_subnet")
+    if "_error" in subnets:
+        result["kea"] = {"_error": subnets["_error"], "_code": subnets.get("_code")}
+    else:
+        leases = _try(client, "kea/leases4/search")
+        kea = {
+            "subnets": [
+                {"subnet": r.get("subnet", ""), "pools": r.get("pools", ""),
+                 "description": r.get("description", "")}
+                for r in _rows(subnets)
+            ],
+        }
+        if "_error" in leases:
+            kea["leases_error"] = leases["_error"]
+        else:
+            kea["leases"] = [
+                {"address": r.get("address", ""), "state": r.get("state", "0")}
+                for r in _rows(leases)
+            ]
+        result["kea"] = kea
+
+    ranges = _try(client, "dnsmasq/settings/search_range")
+    if "_error" in ranges:
+        result["dnsmasq"] = {"_error": ranges["_error"], "_code": ranges.get("_code")}
+    else:
+        leases = _try(client, "dnsmasq/leases/search")
+        dnsmasq = {
+            "ranges": [
+                {"interface": r.get("interface", ""),
+                 "start_addr": r.get("start_addr", ""),
+                 "end_addr": r.get("end_addr", ""),
+                 "description": r.get("description", "")}
+                for r in _rows(ranges)
+            ],
+        }
+        if "_error" in leases:
+            dnsmasq["leases_error"] = leases["_error"]
+        else:
+            dnsmasq["leases"] = [{"address": r.get("address", "")}
+                                 for r in _rows(leases)]
+        result["dnsmasq"] = dnsmasq
+    return result
+
+
+# --- Package audit --------------------------------------------------------
+def _cache_dir():
+    base = os.environ.get("OMD_ROOT")
+    if base:
+        path = os.path.join(base, "tmp", "check_mk", "agent_opnsense")
+    else:
+        path = os.path.join(tempfile.gettempdir(), "agent_opnsense")
+    os.makedirs(path, exist_ok=True)
+    return path
+
+
+def _load_json(path):
+    try:
+        with open(path, encoding="utf-8") as fh:
+            return json.load(fh)
+    except (OSError, ValueError):
+        return {}
+
+
+def _save_json(path, data):
+    tmp = path + ".tmp"
+    with open(tmp, "w", encoding="utf-8") as fh:
+        json.dump(data, fh)
+    os.replace(tmp, path)
+
+
+def _audit_log_done(status):
+    """Return the audit log if upgradestatus shows a finished audit run."""
+    if not isinstance(status, dict):
+        return None
+    log = status.get("log") or ""
+    if status.get("status") != "done" or "AUDIT SECURITY" not in log:
+        return None
+    # The log may contain previous actions; keep only the last audit run.
+    idx = log.rfind("***GOT REQUEST TO AUDIT SECURITY***")
+    return log[idx:] if idx >= 0 else log
+
+
+def collect_audit(client, hostname, interval_min, wait_s=30):
+    """Run "pkg audit" on the firewall at most every interval_min minutes.
+
+    The audit is asynchronous on OPNsense: POST core/firmware/audit starts
+    it, GET core/firmware/upgradestatus reports progress and the log. A run
+    that does not finish within wait_s is picked up on the next agent call.
+    """
+    if interval_min <= 0:
+        return {"enabled": False}
+    safe = re.sub(r"[^A-Za-z0-9_.-]", "_", hostname)
+    path = os.path.join(_cache_dir(), "%s.audit.json" % safe)
+    cache = _load_json(path)
+    now = time.time()
+
+    pending_since = cache.get("pending_since")
+    due = now - cache.get("last_run", 0) >= interval_min * 60
+    # Stuck/foreign runs: give up waiting after 15 minutes and retrigger.
+    if pending_since and now - pending_since > 900:
+        pending_since = None
+
+    if due and not pending_since:
+        started = _try(client, "core/firmware/audit", method="POST")
+        if "_error" in started:
+            cache["error"] = started["_error"]
+            cache["last_run"] = now  # do not hammer the API on errors
+            _save_json(path, cache)
+            return dict(cache, enabled=True, interval=interval_min * 60)
+        pending_since = now
+        cache["pending_since"] = now
+        _save_json(path, cache)
+
+    if pending_since:
+        deadline = time.time() + wait_s
+        while True:
+            status = _try(client, "core/firmware/upgradestatus")
+            log = _audit_log_done(status)
+            if log is not None:
+                cache = {"last_run": time.time(), "log": log}
+                _save_json(path, cache)
+                break
+            if time.time() >= deadline:
+                break
+            time.sleep(2)
+
+    out = dict(cache, enabled=True, interval=interval_min * 60)
+    out["pending"] = bool(cache.get("pending_since"))
+    return out
 
 
 def main(argv=None):
@@ -138,6 +316,22 @@ def main(argv=None):
         # If the smart module is absent we get a 404; treat as not installed.
         smart = {"installed": False, "devices": [], "_error": str(exc)}
     emit("opnsense_smart", smart)
+
+    # --- Gateways (dpinger status) ---
+    emit("opnsense_gateways", _try(client, "routes/gateway/status"))
+
+    # --- WireGuard peers ---
+    emit("opnsense_wireguard", _try(client, "wireguard/service/show"))
+
+    # --- DHCP pool usage (Kea / Dnsmasq) ---
+    emit("opnsense_dhcp", collect_dhcp(client))
+
+    # --- Package audit (pkg audit, cached) ---
+    try:
+        audit = collect_audit(client, args.hostname, args.audit_interval)
+    except OSError as exc:
+        audit = {"enabled": True, "_error": "cache: %s" % exc}
+    emit("opnsense_audit", audit)
     return 0
 
 

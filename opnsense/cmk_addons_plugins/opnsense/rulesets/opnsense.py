@@ -22,10 +22,18 @@ def _formspec():
             "update status, running services, system diagnostics and, "
             "when the os-smart plugin is installed, SMART disk health. "
             "Create an API key/secret under System > Access > Users > "
-            "[user] > API keys. A read-only user with the privileges "
+            "[user] > API keys. A dedicated user with the privileges "
             "'System: Firmware', 'System: Status', 'Status: Services' and "
             "'Lobby: Dashboard' is sufficient. SMART monitoring additionally "
-            "requires the 'Services: SMART' privilege on OPNsense."
+            "requires the 'Services: SMART' privilege on OPNsense. Gateways "
+            "need 'System: Gateways', WireGuard peers 'VPN: WireGuard: "
+            "Status', DHCP pool usage 'Services: DHCP: Kea(v4)' and/or "
+            "'Services: Dnsmasq DNS/DHCP: Settings'. Missing privileges only "
+            "disable the affected services. WARNING: OPNsense privileges are "
+            "not read-only - e.g. 'System: Firmware' also allows firmware "
+            "updates and reboot, 'Status: Services' starting/stopping "
+            "services. 'System: Deny config write' does not block these. "
+            "Treat the API secret like an admin credential."
         ),
         elements={
             "api_key": DictElement(
@@ -71,6 +79,22 @@ def _formspec():
                     title=Title("Request timeout (seconds)"),
                     prefill=DefaultValue(20),
                     custom_validate=(validators.NumberInRange(min_value=1, max_value=300),),
+                ),
+            ),
+            "audit_interval": DictElement(
+                required=False,
+                parameter_form=Integer(
+                    title=Title("Package audit interval (minutes)"),
+                    help_text=Help(
+                        "How often the agent triggers a package audit "
+                        "('pkg audit', known vulnerabilities in installed "
+                        "packages) on OPNsense. The audit fetches the "
+                        "vulnerability database on the firewall, so it runs "
+                        "only every N minutes; the result is cached on the "
+                        "Checkmk site. 0 disables the audit."
+                    ),
+                    prefill=DefaultValue(360),
+                    custom_validate=(validators.NumberInRange(min_value=0, max_value=10080),),
                 ),
             ),
         },

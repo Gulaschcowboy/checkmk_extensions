@@ -1,0 +1,20 @@
+title: OPNsense: Temperature
+agents: opnsense
+catalog: hw
+license: GPLv2
+distribution: check_mk
+
+description:
+ This check monitors a temperature sensor (CPU cores, ACPI zones) of an
+ OPNsense firewall. The data is collected via the special agent
+ {agent_opnsense} from the {diagnostics/system/system_temperature} endpoint.
+
+ Default levels are 70 / 80 °C and can be set through the rule "OPNsense
+ temperature sensors". Virtual machines usually expose no sensors, in which
+ case no services are discovered.
+
+item:
+ The sensor type and number, for example {CPU 0}.
+
+discovery:
+ One service {OPNsense Temperature SENSOR} is created for each sensor.

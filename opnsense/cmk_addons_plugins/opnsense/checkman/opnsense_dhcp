@@ -1,0 +1,25 @@
+title: OPNsense: DHCP Pool Usage
+agents: opnsense
+catalog: os/networking
+license: GPLv2
+distribution: check_mk
+
+description:
+ This check monitors the usage of a DHCPv4 address pool of Kea DHCP or
+ Dnsmasq on an OPNsense firewall. The data is collected via the special agent
+ {agent_opnsense} from the {kea/dhcpv4/search_subnet}, {kea/leases4/search},
+ {dnsmasq/settings/search_range} and {dnsmasq/leases/search} endpoints.
+ The API user needs "Services: DHCP: Kea(v4)" and/or "Services: Dnsmasq
+ DNS/DHCP: Settings" - both also allow configuration changes and service
+ restarts of the respective DHCP server.
+
+ Used addresses are the active leases inside the pool range; static
+ reservations outside the range are not counted. Default levels are
+ 80 / 90 percent and can be set through the rule "OPNsense DHCP pool usage".
+ The legacy ISC DHCP server is not supported.
+
+item:
+ The backend and subnet or range, for example {Kea 192.168.1.0/24}.
+
+discovery:
+ One service {OPNsense DHCP Pool ITEM} is created for each configured pool.
