@@ -81,6 +81,23 @@ def _formspec():
                     custom_validate=(validators.NumberInRange(min_value=1, max_value=300),),
                 ),
             ),
+            "firmware_check_interval": DictElement(
+                required=False,
+                parameter_form=Integer(
+                    title=Title("Firmware update check interval (minutes)"),
+                    help_text=Help(
+                        "How often the agent makes OPNsense check its package "
+                        "mirrors for updates (same as 'Check for updates' in "
+                        "the GUI). In between, only the cached result of the "
+                        "last check is read. If OPNsense has no result yet "
+                        "(e.g. after a reboot), a check is triggered right "
+                        "away. 0 never triggers a check and only reads the "
+                        "result of checks started elsewhere (GUI, cron)."
+                    ),
+                    prefill=DefaultValue(120),
+                    custom_validate=(validators.NumberInRange(min_value=0, max_value=10080),),
+                ),
+            ),
             "audit_interval": DictElement(
                 required=False,
                 parameter_form=Integer(

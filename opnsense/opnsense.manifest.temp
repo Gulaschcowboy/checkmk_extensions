@@ -42,7 +42,7 @@
                                   'opnsense/server_side_calls/opnsense.py']},
  'name': 'opnsense',
  'title': 'OPNsense firewall (REST API)',
- 'version': '1.2.0',
+ 'version': '1.2.1',
  'version.min_required': '2.3.0b1',
  'version.packaged': 'cmk-mkp-tool 3.0.0',
  'version.usable_until': None}

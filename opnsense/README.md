@@ -130,6 +130,27 @@ health and temperature are reported.
 
 ## Changelog
 
+- 1.2.1: Fix [#7](https://github.com/Gulaschcowboy/checkmk_extensions/issues/7):
+  - The agent no longer triggers a firmware update check (mirror probe) on
+    every run, only every `--firmware-check-interval` minutes (default 120,
+    new rule option *Firmware update check interval*) or when OPNsense has
+    no result yet; otherwise it reads the cached status via GET.
+  - Fixed a loop introduced in 1.2.0: the update check overwrote the progress
+    log of a running package audit, so the audit never completed, every
+    agent run waited 30 s and the audit was restarted every 15 min. No
+    update check is started while an audit runs, and only the run that
+    starts the audit waits for it.
+  - `OPNsense Firmware` no longer reports "No updates available" when
+    OPNsense has no check result at all, e.g. after a reboot (→ `UNKNOWN`) or the check
+    failed (`status: error` → `UNKNOWN` with the OPNsense message). The
+    service details show when OPNsense last checked and when the agent last
+    triggered a check.
+  - Kea and Dnsmasq are only queried if the service is enabled on OPNsense
+    (from `core/service/search`, already part of every run). The lease
+    queries are expensive on OPNsense even with the server unused. If the
+    service list is unavailable, both are queried as before. Pools of a
+    disabled DHCP server are no longer monitored; their services vanish
+    after the next service discovery.
 - 1.2.0: New checks ([#6](https://github.com/Gulaschcowboy/checkmk_extensions/issues/6)):
   - `opnsense_gateways` — one service per gateway with dpinger status,
     RTT and packet loss (`rta`/`pl` metrics). States per gateway status
@@ -180,8 +201,8 @@ health and temperature are reported.
 ## Install
 
 ```
-mkp add opnsense-1.2.0.mkp
-mkp enable opnsense 1.2.0
+mkp add opnsense-1.2.1.mkp
+mkp enable opnsense 1.2.1
 ```
 
 Then create a host for the firewall and add a rule under
@@ -200,12 +221,21 @@ Create an API key/secret in OPNsense under *System → Access → Users →
 
 ## Required API key privileges
 
-The special agent itself only performs **read-only** calls (GET, or POST
-without writing state). The single exception is the package audit: it starts
-`pkg audit` on the firewall (POST `core/firmware/audit`, at most every
-`--audit-interval` minutes, default 6 h; `0` disables it). That run only
-refreshes the vulnerability database and reads the installed packages; it
-changes neither configuration nor packages.
+The special agent only reads data, with two throttled exceptions that start
+an action on the firewall. Neither changes configuration or packages:
+
+- **Firmware update check** — POST `core/firmware/status` runs OPNsense's
+  update check (*Check for updates* in the GUI), which contacts the package
+  mirrors. It runs at most every `--firmware-check-interval` minutes
+  (default 2 h), plus once right away when OPNsense has no check result yet
+  (e.g. after a reboot). All other runs only read the cached result (GET).
+  `0` never triggers a check. Rule: *Firmware update check interval*.
+- **Package audit** — POST `core/firmware/audit` starts `pkg audit`, at most
+  every `--audit-interval` minutes (default 6 h; `0` disables it). That run
+  refreshes the vulnerability database and reads the installed packages.
+
+Both write to the same firmware progress log on OPNsense, so the agent does
+not start an update check while an audit is still running.
 
 The API key inherits the privileges of the OPNsense user it belongs to, so
 create a dedicated **monitoring user** and grant exactly the privileges below —

@@ -13,10 +13,18 @@ username, API secret as password) and emits Checkmk agent sections:
     <<<opnsense_dhcp:sep(0)>>>       JSON: Kea + Dnsmasq DHCPv4 ranges/leases
     <<<opnsense_audit:sep(0)>>>      JSON: result of core/firmware/audit
 
-All endpoints are read-only (GET, or POST with empty body) - except the
-package audit, which triggers "pkg audit" on the firewall (POST
-core/firmware/audit). It runs at most once per --audit-interval minutes; the
-result is cached on the Checkmk site. --audit-interval 0 disables it.
+All endpoints only read data, with two throttled exceptions that start an
+action on the firewall:
+  - the firmware update check (POST core/firmware/status runs "firmware
+    probe", which contacts the package mirrors). It runs at most once per
+    --firmware-check-interval minutes (default 120), plus once right away if
+    OPNsense has no check result yet (e.g. after a reboot). All other runs
+    only read the cached result (GET). 0 never triggers a check.
+  - the package audit (POST core/firmware/audit runs "pkg audit"). It runs at
+    most once per --audit-interval minutes; the result is cached on the
+    Checkmk site. --audit-interval 0 disables it.
+Both write to the same firmware progress log on OPNsense, so no update check
+is triggered while an audit is still running.
 
 Required privileges of the API user (exact names from OPNsense ACL.xml):
     "Status: Services", "Lobby: Dashboard",
@@ -56,6 +64,9 @@ def parse_args(argv):
     p.add_argument("--timeout", type=int, default=20, help="Per-request timeout (s)")
     p.add_argument("--audit-interval", type=int, default=360,
                    help="Run the package audit every N minutes (0 = off, default 360)")
+    p.add_argument("--firmware-check-interval", type=int, default=120,
+                   help="Trigger a firmware update check every N minutes "
+                        "(0 = never, only read the cached result; default 120)")
     p.add_argument("hostname", help="OPNsense host / address")
     return p.parse_args(argv)
 
@@ -117,12 +128,39 @@ def _rows(payload):
 
 
 # --- DHCP -----------------------------------------------------------------
-def collect_dhcp(client):
+def _enabled_service_ids(services):
+    """Ids from core/service/search, or None if the list is unavailable.
+
+    OPNsense lists a service there only if it is enabled (kea.inc,
+    dnsmasq.inc), e.g. "kea-dhcp/v4" or "dnsmasq".
+    """
+    # An empty list (e.g. configd not answering) counts as unavailable: a
+    # running OPNsense always has services.
+    if not isinstance(services, dict) or "_error" in services \
+            or not isinstance(services.get("rows"), list) \
+            or not services["rows"]:
+        return None
+    return {r.get("id") for r in services["rows"] if isinstance(r, dict)}
+
+
+def collect_dhcp(client, services=None):
     """Kea + Dnsmasq: configured DHCPv4 ranges and active leases.
 
     Leases are reduced to address (+ Kea state) to keep the section small.
+    A backend is only queried if its service is enabled: the lease queries
+    are expensive on OPNsense (MAC table, DHCP options) even if the server
+    is not in use. Without a usable service list both are queried.
     """
     result = {}
+    enabled = _enabled_service_ids(services)
+    if enabled is None or "kea-dhcp/v4" in enabled:
+        _collect_kea(client, result)
+    if enabled is None or "dnsmasq" in enabled:
+        _collect_dnsmasq(client, result)
+    return result
+
+
+def _collect_kea(client, result):
     subnets = _try(client, "kea/dhcpv4/search_subnet")
     if "_error" in subnets:
         result["kea"] = {"_error": subnets["_error"], "_code": subnets.get("_code")}
@@ -144,6 +182,8 @@ def collect_dhcp(client):
             ]
         result["kea"] = kea
 
+
+def _collect_dnsmasq(client, result):
     ranges = _try(client, "dnsmasq/settings/search_range")
     if "_error" in ranges:
         result["dnsmasq"] = {"_error": ranges["_error"], "_code": ranges.get("_code")}
@@ -164,7 +204,6 @@ def collect_dhcp(client):
             dnsmasq["leases"] = [{"address": r.get("address", "")}
                                  for r in _rows(leases)]
         result["dnsmasq"] = dnsmasq
-    return result
 
 
 # --- Package audit --------------------------------------------------------
@@ -205,26 +244,123 @@ def _audit_log_done(status):
     return log[idx:] if idx >= 0 else log
 
 
+def _cache_path(hostname, kind):
+    safe = re.sub(r"[^A-Za-z0-9_.-]", "_", hostname)
+    return os.path.join(_cache_dir(), "%s.%s.json" % (safe, kind))
+
+
+# A pending audit older than this is considered stuck and retriggered.
+AUDIT_STALE_S = 900
+
+
+def _audit_running(hostname):
+    """True while an audit started by us has not been picked up yet."""
+    pending_since = _load_json(_cache_path(hostname, "audit")).get("pending_since")
+    return bool(pending_since) and time.time() - pending_since <= AUDIT_STALE_S
+
+
+# --- Firmware / updates ---------------------------------------------------
+# Minimum gap between two triggered checks when OPNsense still reports no
+# result afterwards (e.g. mirrors unreachable), to not probe on every run.
+FIRMWARE_RETRY_S = 300
+
+
+def _no_check_result(firmware):
+    """True if OPNsense has no update check result (/tmp/pkg_upgrade.json).
+
+    Status "none" alone is ambiguous: OPNsense also reports it when a check
+    result exists but no updates are available. Only without a check result
+    the check fields (connection, last_check) are missing.
+    """
+    return (firmware.get("status") == "none"
+            and "connection" not in firmware
+            and "last_check" not in firmware)
+
+
+def collect_firmware(client, hostname, interval_min, audit_running):
+    """Read the firmware status; trigger an update check only when due.
+
+    GET core/firmware/status only returns the result of the last check
+    (/tmp/pkg_upgrade.json on OPNsense). POST additionally runs a synchronous
+    "firmware probe" first, which contacts the package mirrors. The POST is
+    sent at most every interval_min minutes, or right away if OPNsense has
+    no check result (e.g. after a reboot).
+    """
+    path = _cache_path(hostname, "firmware")
+    cache = _load_json(path)
+    now = time.time()
+    last_probe = cache.get("last_probe", 0)
+    meta = {"interval": interval_min * 60, "probed": False}
+
+    def probe():
+        cache["last_probe"] = now  # also on errors: do not hammer the API
+        try:
+            result = client.call("core/firmware/status", method="POST")
+            cache.pop("error", None)
+        except (HTTPError, URLError, ValueError, OSError) as exc:
+            result = {"_error": str(exc)}
+            cache["error"] = str(exc)
+        try:
+            _save_json(path, cache)
+        except OSError as exc:
+            meta["cache_error"] = str(exc)
+        meta["probed"] = True
+        return result
+
+    due = interval_min > 0 and now - last_probe >= interval_min * 60
+    firmware = None
+    if due and not audit_running:
+        firmware = probe()
+    if firmware is None or "_error" in firmware:
+        # Not due, deferred, or the probe itself failed: read cached status.
+        try:
+            firmware = client.call("core/firmware/status")
+        except (HTTPError, URLError, ValueError, OSError) as exc:
+            return {"_error": str(exc)}
+        if (_no_check_result(firmware) and interval_min > 0
+                and not meta["probed"]):
+            if audit_running:
+                meta["deferred"] = "package audit running"
+            elif now - last_probe >= FIRMWARE_RETRY_S:
+                probed = probe()
+                if "_error" not in probed:
+                    firmware = probed
+    if due and audit_running:
+        meta["deferred"] = "package audit running"
+    if meta["probed"] and _no_check_result(firmware):
+        # launcher.sh uses "flock -n": if another firmware action holds the
+        # lock (GUI, cron, audit), the check is silently skipped.
+        meta["probe_no_result"] = True
+    meta["retry_s"] = FIRMWARE_RETRY_S
+    if cache.get("last_probe"):
+        meta["last_probe"] = cache["last_probe"]
+    if cache.get("error"):
+        meta["probe_error"] = cache["error"]
+    firmware["_agent"] = meta
+    return firmware
+
+
 def collect_audit(client, hostname, interval_min, wait_s=30):
     """Run "pkg audit" on the firewall at most every interval_min minutes.
 
     The audit is asynchronous on OPNsense: POST core/firmware/audit starts
     it, GET core/firmware/upgradestatus reports progress and the log. A run
-    that does not finish within wait_s is picked up on the next agent call.
+    that does not finish within wait_s is picked up by a single status poll
+    on each following agent call (no waiting there).
     """
     if interval_min <= 0:
         return {"enabled": False}
-    safe = re.sub(r"[^A-Za-z0-9_.-]", "_", hostname)
-    path = os.path.join(_cache_dir(), "%s.audit.json" % safe)
+    path = _cache_path(hostname, "audit")
     cache = _load_json(path)
     now = time.time()
 
     pending_since = cache.get("pending_since")
     due = now - cache.get("last_run", 0) >= interval_min * 60
     # Stuck/foreign runs: give up waiting after 15 minutes and retrigger.
-    if pending_since and now - pending_since > 900:
+    if pending_since and now - pending_since > AUDIT_STALE_S:
         pending_since = None
 
+    started_now = False
     if due and not pending_since:
         started = _try(client, "core/firmware/audit", method="POST")
         if "_error" in started:
@@ -233,11 +369,13 @@ def collect_audit(client, hostname, interval_min, wait_s=30):
             _save_json(path, cache)
             return dict(cache, enabled=True, interval=interval_min * 60)
         pending_since = now
+        started_now = True
         cache["pending_since"] = now
         _save_json(path, cache)
 
     if pending_since:
-        deadline = time.time() + wait_s
+        # Only the run that started the audit waits; later runs poll once.
+        deadline = time.time() + (wait_s if started_now else 0)
         while True:
             status = _try(client, "core/firmware/upgradestatus")
             log = _audit_log_done(status)
@@ -260,12 +398,13 @@ def main(argv=None):
     client = OPNsenseClient(args.hostname, args.port, args.api_key,
                             args.api_secret, ctx, args.timeout)
 
-    # --- Firmware / updates ---
-    firmware = {}
+    # --- Firmware / updates (update check throttled, see collect_firmware) ---
     try:
-        firmware = client.call("core/firmware/status", method="POST")
-    except (HTTPError, URLError, ValueError) as exc:
-        firmware = {"_error": str(exc)}
+        audit_running = args.audit_interval > 0 and _audit_running(args.hostname)
+        firmware = collect_firmware(client, args.hostname,
+                                    args.firmware_check_interval, audit_running)
+    except OSError as exc:
+        firmware = {"_error": "cache: %s" % exc}
     emit("opnsense_firmware", firmware)
 
     # --- Services (per-service discovery) ---
@@ -324,7 +463,7 @@ def main(argv=None):
     emit("opnsense_wireguard", _try(client, "wireguard/service/show"))
 
     # --- DHCP pool usage (Kea / Dnsmasq) ---
-    emit("opnsense_dhcp", collect_dhcp(client))
+    emit("opnsense_dhcp", collect_dhcp(client, services))
 
     # --- Package audit (pkg audit, cached) ---
     try:

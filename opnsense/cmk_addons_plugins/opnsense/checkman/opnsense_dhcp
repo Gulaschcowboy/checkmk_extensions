@@ -18,6 +18,9 @@ description:
  80 / 90 percent and can be set through the rule "OPNsense DHCP pool usage".
  The legacy ISC DHCP server is not supported.
 
+ Kea and Dnsmasq are only queried if the respective service is enabled
+ on OPNsense; pools of a disabled DHCP server are not monitored.
+
 item:
  The backend and subnet or range, for example {Kea 192.168.1.0/24}.
 

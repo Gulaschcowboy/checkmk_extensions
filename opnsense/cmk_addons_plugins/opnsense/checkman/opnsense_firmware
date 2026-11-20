@@ -14,7 +14,15 @@ description:
  package updates or a new package set are available. It turns {CRIT} when an
  upgrade that requires a reboot is pending. A problem reported by the package
  repository also raises the state to {WARN}. If the API cannot be queried the
- service becomes {UNKNOWN}.
+ service becomes {UNKNOWN}. The service also becomes {UNKNOWN} if OPNsense has
+ no update check result or the check failed (e.g. mirror unreachable),
+ instead of reporting "No updates available".
+
+ The special agent triggers OPNsense's update check (which contacts the
+ package mirrors) only every {Firmware update check interval} minutes
+ (default 120) or when no result exists yet, e.g. after a reboot; in between
+ it reads the cached result. The details show when OPNsense last checked and
+ when the agent last triggered a check.
 
  There are no configurable parameters for this check.
 

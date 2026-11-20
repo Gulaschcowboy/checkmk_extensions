@@ -18,6 +18,7 @@ class OPNsenseParams(BaseModel):
     no_cert_check: bool = True
     timeout: int = 20
     audit_interval: int = 360
+    firmware_check_interval: int = 120
 
 
 def _commands(params: OPNsenseParams, host_config: HostConfig
@@ -28,6 +29,7 @@ def _commands(params: OPNsenseParams, host_config: HostConfig
         "--port", str(params.port),
         "--timeout", str(params.timeout),
         "--audit-interval", str(params.audit_interval),
+        "--firmware-check-interval", str(params.firmware_check_interval),
     ]
     if params.no_cert_check:
         args.append("--no-cert-check")
